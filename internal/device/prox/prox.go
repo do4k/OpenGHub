@@ -14,6 +14,7 @@ package prox
 import (
 	"errors"
 	"fmt"
+	"log"
 	"syscall"
 	"time"
 
@@ -56,6 +57,13 @@ type Headset struct {
 	eqBands        []device.EqualizerBand
 	eqMinDB        int
 	eqMaxDB        int
+
+	// Cached battery state for smoothing noisy ADC readings.
+	// The PRO X Wireless uses voltage-based battery which can be noisy,
+	// so we smooth readings over time.
+	lastBatteryPercent int
+	lastBatteryCharging bool
+	batteryReadCount    int
 }
 
 func (h *Headset) Info() device.Info { return h.info }
@@ -148,5 +156,40 @@ func (h *Headset) Battery() (percent int, charging bool, err error) {
 	if h.batteryFeatureIndex == 0 {
 		return 0, false, fmt.Errorf("prox: device has no supported battery feature")
 	}
-	return hidpp.ReadBattery(h.conn, h.deviceIndex, h.batteryFeatureIndex, h.batteryKind)
+	rawPercent, charging, err := hidpp.ReadBattery(h.conn, h.deviceIndex, h.batteryFeatureIndex, h.batteryKind)
+	if err != nil {
+		return 0, false, err
+	}
+
+	// Smooth battery readings to reduce noise from voltage-based (ADC) battery.
+	// The PRO X Wireless uses voltage-based battery which can fluctuate significantly
+	// due to ADC noise, causing the percentage to jump around.
+	// We use a simple moving average over the last few readings.
+	if h.batteryReadCount < 3 {
+		// First few readings: use directly to establish baseline
+		h.lastBatteryPercent = rawPercent
+		h.lastBatteryCharging = charging
+		h.batteryReadCount++
+		log.Printf("prox: battery raw=%d%%, smoothed=%d%%, charging=%v", rawPercent, h.lastBatteryPercent, charging)
+	} else {
+		// Smooth: average current with last reading (2-point moving average)
+		// This significantly reduces noise while still tracking real changes.
+		prev := h.lastBatteryPercent
+		h.lastBatteryPercent = (h.lastBatteryPercent + rawPercent) / 2
+		h.lastBatteryCharging = charging // Use latest charging state
+		// Log only if there's a significant change (>5%) to avoid spam
+		if abs(prev-h.lastBatteryPercent) >= 5 || abs(rawPercent-h.lastBatteryPercent) >= 5 {
+			log.Printf("prox: battery raw=%d%%, smoothed=%d%%, charging=%v", rawPercent, h.lastBatteryPercent, charging)
+		}
+	}
+
+	return h.lastBatteryPercent, h.lastBatteryCharging, nil
+}
+
+// abs returns the absolute value of an int.
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
