@@ -62,7 +62,7 @@ func TestGeneratePreview(t *testing.T) {
 	w.Resize(fyne.NewSize(980, 620))
 	save(t, w.Canvas().Capture(), "preview-dashboard.png")
 
-	state.selectedSerial = devices[0].Info().Serial
+	state.selectedDeviceKey = deviceKey(devices[0])
 	w2 := test.NewWindow(buildMainView(state, devices))
 	w2.Resize(fyne.NewSize(980, 620))
 	save(t, w2.Canvas().Capture(), "preview-device.png")
@@ -73,17 +73,17 @@ func TestGeneratePreview(t *testing.T) {
 	if err := store.Set(litra.Info().Serial, config.DeviceState{Power: true, Brightness: 65, Temperature: 5000}); err != nil {
 		t.Fatal(err)
 	}
-	state.selectedSerial = litra.Info().Serial
+	state.selectedDeviceKey = deviceKey(litra)
 	w3 := test.NewWindow(buildMainView(state, devices))
 	w3.Resize(fyne.NewSize(980, 620))
 	save(t, w3.Canvas().Capture(), "preview-litra.png")
 
-	state.selectedSerial = devices[3].Info().Serial
+	state.selectedDeviceKey = deviceKey(devices[3])
 	w4 := test.NewWindow(buildMainView(state, devices))
 	w4.Resize(fyne.NewSize(980, 620))
 	save(t, w4.Canvas().Capture(), "preview-headset.png")
 
-	state.selectedSerial = devices[4].Info().Serial
+	state.selectedDeviceKey = deviceKey(devices[4])
 	w5 := test.NewWindow(buildMainView(state, devices))
 	w5.Resize(fyne.NewSize(980, 620))
 	save(t, w5.Canvas().Capture(), "preview-webcam.png")

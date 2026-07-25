@@ -22,6 +22,13 @@ import (
 	"logitux/internal/uinput"
 )
 
+// deviceKey returns a stable string key for a device, using VendorID:ProductID:Serial.
+// This works even when serial is empty, unlike relying on serial alone.
+func deviceKey(d device.Device) string {
+	info := d.Info()
+	return fmt.Sprintf("%04x:%04x:%s", info.VendorID, info.ProductID, info.Serial)
+}
+
 func loadingPlaceholder() fyne.CanvasObject {
 	return container.NewCenter(widget.NewLabel("Looking for Logitech devices..."))
 }
@@ -30,7 +37,7 @@ func loadingPlaceholder() fyne.CanvasObject {
 // the dashboard of device cards is the home screen, tapping a card opens
 // that device's page full-window, and a back arrow in the page's top-left
 // returns to the dashboard. Rebuilt from the live device list on every
-// discovery tick (see appState.refresh); a.selectedSerial carries which
+// discovery tick (see appState.refresh); a.selectedDeviceKey carries which
 // screen is showing across rebuilds, and falls back to the dashboard if
 // the open device's page unplugs.
 func buildMainView(a *appState, devices []device.Device) fyne.CanvasObject {
@@ -38,10 +45,10 @@ func buildMainView(a *appState, devices []device.Device) fyne.CanvasObject {
 	if d := a.selectedDevice(devices); d != nil {
 		return buildDevicePage(a, devices, d)
 	}
-	a.selectedSerial = ""
+	a.selectedDeviceKey = ""
 	a.previewer, a.previewImage = nil, nil
 	return buildDashboard(devices, func(index int) {
-		a.selectedSerial = devices[index].Info().Serial
+		a.selectedDeviceKey = deviceKey(devices[index])
 		a.window.SetContent(buildMainView(a, devices))
 	})
 }
@@ -55,21 +62,21 @@ func buildMainView(a *appState, devices []device.Device) fyne.CanvasObject {
 // call lifecycle, since that rebuilds every tick regardless.
 func stopInactivePreviews(a *appState, devices []device.Device) {
 	for _, d := range devices {
-		if p, ok := d.(device.Previewer); ok && d.Info().Serial != a.selectedSerial {
+		if p, ok := d.(device.Previewer); ok && deviceKey(d) != a.selectedDeviceKey {
 			p.StopPreview()
 		}
 	}
 }
 
-// selectedDevice resolves a.selectedSerial against the current device
+// selectedDevice resolves a.selectedDeviceKey against the current device
 // list: the device whose page should be showing, or nil for the
 // dashboard (nothing selected, or the selected device is gone).
 func (a *appState) selectedDevice(devices []device.Device) device.Device {
-	if a.selectedSerial == "" {
+	if a.selectedDeviceKey == "" {
 		return nil
 	}
 	for _, d := range devices {
-		if d.Info().Serial == a.selectedSerial {
+		if deviceKey(d) == a.selectedDeviceKey {
 			return d
 		}
 	}
@@ -95,7 +102,7 @@ func buildDevicePage(a *appState, devices []device.Device, d device.Device) fyne
 	info := d.Info()
 
 	back := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
-		a.selectedSerial = ""
+		a.selectedDeviceKey = ""
 		a.window.SetContent(buildMainView(a, devices))
 	})
 	back.Importance = widget.LowImportance

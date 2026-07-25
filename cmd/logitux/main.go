@@ -66,20 +66,21 @@ type appState struct {
 	// retries. Prevents a per-tick open storm on those nodes.
 	skip map[string]bool
 
-	// selectedSerial is the serial of the device whose page is open, or
-	// "" when the dashboard (the home screen) is showing. It survives
-	// rebuilds (buildMainView runs on every discovery tick) so the open
-	// page stays open; if that device unplugs, the UI falls back to the
-	// dashboard. Only ever touched from the main/UI goroutine — inside
-	// fyne.Do in refresh, or from a widget callback — so it needs no
-	// lock, unlike current above.
-	selectedSerial string
+	// selectedDeviceKey is a stable identifier (VendorID:ProductID:Serial) for the
+	// device whose page is open, or "" when the dashboard (the home screen) is
+	// showing. It survives rebuilds (buildMainView runs on every discovery tick)
+	// so the open page stays open; if that device unplugs, the UI falls back to
+	// the dashboard. Uses VendorID:ProductID:Serial as the key since serials
+	// aren't always unique or even present. Only ever touched from the main/UI
+	// goroutine — inside fyne.Do in refresh, or from a widget callback — so it
+	// needs no lock, unlike current above.
+	selectedDeviceKey string
 
-	// pageSection remembers, per device serial, which section of that
+	// pageSection remembers, per device key, which section of that
 	// device's page (sensitivity/assignments/lighting/sound) is selected.
 	// Pages are rebuilt from scratch on every refresh tick, which would
 	// otherwise silently snap back to the first section out from under
-	// the user; same no-lock-needed reasoning as selectedSerial.
+	// the user; same no-lock-needed reasoning as selectedDeviceKey.
 	pageSection map[string]string
 
 	// previewer/previewImage/previewSeq belong to the live camera preview
@@ -90,7 +91,7 @@ type appState struct {
 	// actual new frame. Set from cameraPreviewShowcase, which — like
 	// buildMainView generally — only ever runs on the main/UI goroutine
 	// (a nav callback, or inside refresh's fyne.Do), so like
-	// selectedSerial these need no lock.
+	// selectedDeviceKey these need no lock.
 	previewer    device.Previewer
 	previewImage *canvas.Image
 	previewSeq   uint64

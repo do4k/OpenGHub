@@ -14,7 +14,6 @@ package prox
 import (
 	"errors"
 	"fmt"
-	"log"
 	"syscall"
 	"time"
 
@@ -36,7 +35,7 @@ const (
 // discovery.
 var probeTimeout = 300 * time.Millisecond
 
-const operationTimeout = 2 * time.Second
+const operationTimeout = 500 * time.Millisecond
 
 func init() {
 	device.Register(vendorID, []uint16{productID}, open)
@@ -71,34 +70,24 @@ func open(backend hid.Backend, info hid.Info) (device.Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prox: open %s: %w", info.Path, err)
 	}
-    conn := hidpp.Open(h)
+	conn := hidpp.Open(h)
 	conn.SetTimeout(probeTimeout)
 
-	// Safely retry Ping (max 2 attempts, 5s cooldown)
+	// Safely retry Ping (max 2 attempts, 500ms cooldown)
 	var pingErr error
 	for i := 0; i < 2; i++ {
 		if _, _, pingErr = hidpp.Ping(conn, hidpp.DeviceIndexDirect); pingErr == nil {
 			break
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	if pingErr != nil {
+		conn.Close()
 		// Ignore EPIPE (broken pipe) to avoid crashes
 		if errors.Is(pingErr, syscall.EPIPE) {
-			log.Printf("prox: ignoring EPIPE error for headset (dongle may be faulty)")
-			return &Headset{
-				info: device.Info{
-					Name:      "PRO X Wireless Gaming Headset",
-					Kind:      device.KindHeadset,
-					Serial:    info.Serial,
-					VendorID:  vendorID,
-					ProductID: productID,
-				},
-				batteryKind: hidpp.BatteryKindNone,
-			}, nil
+			return nil, nil // Skip this interface, but don't error
 		}
-		conn.Close()
 		return nil, fmt.Errorf("prox: ping headset: %w", pingErr)
 	}
 	conn.SetTimeout(operationTimeout)
