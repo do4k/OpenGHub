@@ -1,3 +1,4 @@
+using LogiTux.Core.Devices.Camera;
 using LogiTux.Core.Devices.Litra;
 using LogiTux.Core.Devices.Mouse;
 using LogiTux.Core.Hid;
@@ -43,7 +44,32 @@ foreach (var d in devices)
     await ProbeHidppAsync(backend, d, verbose);
 }
 
+foreach (string node in V4l2Camera.EnumerateNodes())
+    ProbeCamera(node);
+
 Console.WriteLine("Done.");
+
+static void ProbeCamera(string node)
+{
+    using V4l2Camera? camera = V4l2Camera.Open(node);
+    if (camera is null)
+    {
+        Console.WriteLine($"  /dev/{node}: not a capture interface");
+        return;
+    }
+    Console.WriteLine($"  /dev/{node}: {camera.Name} (serial '{camera.Serial}')");
+    foreach (CameraControl c in camera.Controls)
+    {
+        try
+        {
+            Console.WriteLine($"    {c.Name,-14} range [{c.Min}, {c.Max}] step {c.Step} default {c.Default}  now {camera.GetControl(c.Name)}");
+        }
+        catch (IOException e)
+        {
+            Console.WriteLine($"    {c.Name,-14} range [{c.Min}, {c.Max}]  (read failed: {e.Message})");
+        }
+    }
+}
 
 static async Task ProbeMouseAsync(HidBackend backend, DeviceInfo d, int? setDpi)
 {

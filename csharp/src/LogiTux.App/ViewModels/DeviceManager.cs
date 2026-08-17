@@ -1,3 +1,4 @@
+using LogiTux.Core.Devices.Camera;
 using LogiTux.Core.Devices.Headset;
 using LogiTux.Core.Devices.Litra;
 using LogiTux.Core.Devices.Mouse;
@@ -55,9 +56,18 @@ public static class DeviceManager
                 }
                 else if (GProMouse.IsMouseProduct(info.ProductId))
                 {
-                    MouseViewModel? mouse = await MouseViewModel.CreateAsync(backend, info).ConfigureAwait(false);
-                    if (mouse is not null)
-                        cards.Add(mouse);
+                    try
+                    {
+                        MouseViewModel? mouse = await MouseViewModel.CreateAsync(backend, info).ConfigureAwait(false);
+                        if (mouse is not null)
+                            cards.Add(mouse);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // "ping direct-connected mouse: no response" etc. — the
+                        // mouse isn't plugged in right now; its tile would be
+                        // pure noise. Skip it silently.
+                    }
                 }
             }
             catch (Exception e)
@@ -65,6 +75,21 @@ public static class DeviceManager
                 cards.Add(new ErrorCardViewModel(
                     name, subtitle, e.Message,
                     ProductArt.GetValueOrDefault(info.ProductId) is string art ? ArtCatalog.Load(art) : null));
+            }
+        }
+
+        foreach (string node in V4l2Camera.EnumerateNodes())
+        {
+            try
+            {
+                CameraCardViewModel? card = CameraCardViewModel.OpenAsync(node);
+                if (card is not null)
+                    cards.Add(card);
+            }
+            catch (Exception e)
+            {
+                cards.Add(new ErrorCardViewModel(
+                    V4l2Camera.ProductNameForNode(node) ?? "Webcam", $"webcam node /dev/{node}", e.Message, null));
             }
         }
         return cards;

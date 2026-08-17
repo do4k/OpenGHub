@@ -13,7 +13,7 @@ public static class ArtCatalog
 
     public static SvgImage? Load(string resourceName)
     {
-        if (Cache.TryGetValue(resourceName, out SvgImage? cached))
+        if (Cache.TryGetValue(resourceName, out var cached))
             return cached;
 
         return Dispatcher.UIThread.Invoke(() =>

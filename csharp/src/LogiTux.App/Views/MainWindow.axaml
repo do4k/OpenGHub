@@ -105,6 +105,31 @@
                         </ContentControl>
                     </DataTemplate>
 
+                    <DataTemplate x:DataType="vm:CameraCardViewModel" DataType="{x:Type vm:CameraCardViewModel}">
+                        <ContentControl Classes="card">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
+                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Controls}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:CameraControlVm">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
+                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11" Opacity="0.7"
+                                                           Width="90" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <Slider Grid.Column="1" Minimum="{Binding Min}" Maximum="{Binding Max}"
+                                                        TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
+                                                        Value="{Binding Value, Mode=TwoWay}" Margin="8,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Value}" FontSize="12" FontWeight="SemiBold"
+                                                           Width="36" TextAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ContentControl>
+                    </DataTemplate>
+
                     <DataTemplate x:DataType="vm:HeadsetViewModel" DataType="{x:Type vm:HeadsetViewModel}">
                         <ContentControl Classes="card">
                             <StackPanel>
