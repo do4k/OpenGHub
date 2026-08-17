@@ -1,3 +1,11 @@
+# .NET build output
+src/**/bin/
+src/**/obj/
+*.user
+.vs/
+.idea/
+
+# Published/installed artifacts
 /bin/
 /dist/
 *.test

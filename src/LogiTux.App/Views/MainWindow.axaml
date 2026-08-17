@@ -1,0 +1,448 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LogiTux.App.ViewModels"
+        xmlns:s="using:LogiTux.App.ViewModels.Sections"
+        x:Class="LogiTux.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="LogiTux"
+        Width="1000"
+        Height="700"
+        MinWidth="760"
+        MinHeight="480">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </Window.KeyBindings>
+
+    <Window.Styles>
+        <Style Selector="ContentControl.detailCard">
+            <Setter Property="Background" Value="#1f1f1f" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="24,20" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MaxWidth" Value="640" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+
+        <Style Selector="Button.tile">
+            <Setter Property="Background" Value="#1f1f1f" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,20,20" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tile:hover">
+            <Setter Property="Background" Value="#2a2a2a" />
+        </Style>
+
+        <!-- G HUB-style section rail button -->
+        <Style Selector="Button.rail">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#9aa0a6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="4,10" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="MinWidth" Value="72" />
+        </Style>
+        <Style Selector="Button.rail:hover">
+            <Setter Property="Foreground" Value="#ffffff" />
+            <Setter Property="Background" Value="#262626" />
+        </Style>
+        <Style Selector="Button.rail.selected">
+            <Setter Property="Foreground" Value="#ffffff" />
+            <Setter Property="Background" Value="#2f2f2f" />
+        </Style>
+
+        <!-- G HUB-style pill buttons (DPI stages, report rate, presets) -->
+        <Style Selector="Button.pill">
+            <Setter Property="Background" Value="#2a2a2a" />
+            <Setter Property="Foreground" Value="#e8eaed" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="MinWidth" Value="0" />
+        </Style>
+        <Style Selector="Button.pill:hover">
+            <Setter Property="Background" Value="#3a3a3a" />
+        </Style>
+        <Style Selector="Button.pill.active">
+            <Setter Property="Background" Value="#8ab4f8" />
+            <Setter Property="Foreground" Value="#0f1419" />
+        </Style>
+        <Style Selector="Button.pill.active:hover">
+            <Setter Property="Background" Value="#a8cefa" />
+        </Style>
+
+        <!-- Disabled spec-surface chips (stub sections) -->
+        <Style Selector="Border.chip">
+            <Setter Property="Background" Value="#242424" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Margin" Value="0,4,8,0" />
+        </Style>
+    </Window.Styles>
+
+    <Panel>
+        <!-- ============================ Dashboard ============================ -->
+        <DockPanel Margin="16" IsVisible="{Binding !IsDetail}">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+                <TextBlock Text="LogiTux" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+                <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <TextBlock Text="No supported Logitech devices found.
+Make sure the device is plugged in and the udev rule has been applied (see the README)."
+                       TextWrapping="Wrap" TextAlignment="Center" Foreground="#9aa0a6"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding IsEmpty}" />
+
+            <ScrollViewer IsVisible="{Binding !IsEmpty}">
+                <ItemsControl ItemsSource="{Binding Devices}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DeviceCardViewModel">
+                            <Button Classes="tile" Command="{Binding OpenCommand}">
+                                <Grid Width="230" Height="260" RowDefinitions="Auto,*,Auto">
+                                    <StackPanel Grid.Row="0" Margin="16,14,16,0">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"
+                                                   FontSize="13" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Summary}" Opacity="0.6" FontSize="11"
+                                                   Margin="0,3,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Image Grid.Row="1" Source="{Binding Art}" Stretch="Uniform"
+                                           MaxWidth="180" MaxHeight="150"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Margin="16,10" />
+                                    <TextBlock Grid.Row="2" Text="&#x2699;" FontSize="16"
+                                               HorizontalAlignment="Right" Margin="0,0,16,12" />
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+
+        <!-- ============================ Device page ============================ -->
+        <DockPanel Margin="16" IsVisible="{Binding IsDetail}">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,16">
+                <Button Content="&#x2190;" FontSize="16" Command="{Binding BackCommand}"
+                        Padding="10,4" VerticalAlignment="Center" />
+                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Selected.DisplayName}" FontSize="20"
+                               FontWeight="Bold" />
+                    <TextBlock Text="{Binding Selected.Subtitle}" Opacity="0.6" FontSize="11" />
+                </StackPanel>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="Auto,*">
+                <ScrollViewer Grid.Column="0" IsVisible="{Binding Selected.HasSections}" x:CompileBindings="False">
+                    <ItemsControl ItemsSource="{Binding Selected.Sections}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="s:SectionViewModel">
+                                <Button Classes="rail" Classes.selected="{Binding IsSelected}"
+                                        Command="{Binding SelectCommand}">
+                                    <StackPanel Width="68" HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding Glyph}" FontSize="18"
+                                                   HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding Title}" FontSize="9"
+                                                   HorizontalAlignment="Center" TextAlignment="Center"
+                                                   TextWrapping="Wrap" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <ScrollViewer Grid.Column="1" Margin="20,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Selected.Status}" FontSize="11" Foreground="#8ab4f8"
+                                   TextWrapping="Wrap" Margin="0,0,0,12" />
+                        <ContentControl Content="{Binding Selected.SelectedSection.Content}" x:CompileBindings="False">
+                            <ContentControl.DataTemplates>
+                                <DataTemplate x:DataType="vm:ErrorCardViewModel" DataType="{x:Type vm:ErrorCardViewModel}">
+                                    <ContentControl Classes="detailCard">
+                                        <TextBlock Text="{Binding Status}" Foreground="#f28b82"
+                                                   FontSize="12" TextWrapping="Wrap" />
+                                    </ContentControl>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:MouseSensitivityViewModel" DataType="{x:Type s:MouseSensitivityViewModel}">
+                                    <StackPanel>
+                                        <TextBlock Text="DPI Speed" FontSize="11" Opacity="0.7" />
+                                        <ItemsControl ItemsSource="{Binding Stages}" Margin="0,6,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="s:DpiStageViewModel">
+                                                    <Button Classes="pill" Classes.active="{Binding IsActive}"
+                                                            Content="{Binding Value}" Command="{Binding PickCommand}"
+                                                            Margin="0,0,8,8" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <TextBlock Text="{Binding BatteryText}" FontSize="11" Opacity="0.6"
+                                                   Margin="0,4,0,0" />
+
+                                        <StackPanel IsVisible="{Binding HasReportRate}" Margin="0,18,0,0">
+                                            <TextBlock Text="Report Rate (per second)" FontSize="11" Opacity="0.7" />
+                                            <ItemsControl ItemsSource="{Binding ReportRateOptions}" Margin="0,6,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="s:ReportRateOptionViewModel">
+                                                        <Button Classes="pill" Classes.active="{Binding IsActive}"
+                                                                Content="{Binding Value}" Command="{Binding PickCommand}"
+                                                                Margin="0,0,8,8" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:MouseAssignmentsViewModel" DataType="{x:Type s:MouseAssignmentsViewModel}">
+                                    <ContentControl Classes="detailCard">
+                                        <StackPanel>
+                                            <TextBlock Text="Assignments" FontSize="16" FontWeight="Bold" />
+                                            <ItemsControl ItemsSource="{Binding Items}" Margin="0,12,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Classes="chip">
+                                                            <TextBlock Text="{Binding}" FontSize="11"
+                                                                       Foreground="#6a6f76" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding Note}" FontSize="11" Foreground="#9aa0a6"
+                                                       TextWrapping="Wrap" Margin="0,14,0,0" MaxWidth="520" />
+                                        </StackPanel>
+                                    </ContentControl>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:MouseLightingViewModel" DataType="{x:Type s:MouseLightingViewModel}">
+                                    <ContentControl Classes="detailCard">
+                                        <StackPanel>
+                                            <TextBlock Text="LIGHTSYNC" FontSize="16" FontWeight="Bold" />
+                                            <Border Width="64" Height="40" CornerRadius="6" Margin="0,12,0,4"
+                                                    Background="{Binding RgbBrush}">
+                                            </Border>
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+                                                <TextBlock Grid.Column="0" Text="Red" FontSize="11" Opacity="0.7"
+                                                           Width="40" VerticalAlignment="Center" />
+                                                <Slider Grid.Column="1" Minimum="0" Maximum="255"
+                                                        Value="{Binding Red, Mode=TwoWay}" Margin="8,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Red}" FontSize="12"
+                                                           Width="32" TextAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+                                                <TextBlock Grid.Column="0" Text="Green" FontSize="11" Opacity="0.7"
+                                                           Width="40" VerticalAlignment="Center" />
+                                                <Slider Grid.Column="1" Minimum="0" Maximum="255"
+                                                        Value="{Binding Green, Mode=TwoWay}" Margin="8,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Green}" FontSize="12"
+                                                           Width="32" TextAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+                                                <TextBlock Grid.Column="0" Text="Blue" FontSize="11" Opacity="0.7"
+                                                           Width="40" VerticalAlignment="Center" />
+                                                <Slider Grid.Column="1" Minimum="0" Maximum="255"
+                                                        Value="{Binding Blue, Mode=TwoWay}" Margin="8,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Blue}" FontSize="12"
+                                                           Width="32" TextAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <TextBlock Text="Logo LED, static color. The hardware has no read-back, so the sliders seed from the last state LogiTux sent."
+                                                       FontSize="11" Foreground="#9aa0a6" TextWrapping="Wrap"
+                                                       Margin="0,14,0,0" MaxWidth="520" />
+                                        </StackPanel>
+                                    </ContentControl>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:HeadsetAcousticsViewModel" DataType="{x:Type s:HeadsetAcousticsViewModel}">
+                                    <StackPanel>
+                                        <StackPanel IsVisible="{Binding HasSidetone}">
+                                            <TextBlock Text="Sidetone" FontSize="11" Opacity="0.7" />
+                                            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                                <Slider Grid.Column="0" Minimum="{Binding Sidetone.Min}"
+                                                        Maximum="{Binding Sidetone.Max}"
+                                                        TickFrequency="{Binding Sidetone.Step}"
+                                                        IsSnapToTickEnabled="True"
+                                                        Value="{Binding Sidetone.Value, Mode=TwoWay}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Sidetone.ValueText}"
+                                                           FontSize="14" FontWeight="SemiBold"
+                                                           Margin="12,0,0,0" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <ToggleSwitch Margin="0,16,0,0" IsVisible="{Binding HasNoiseReduction}"
+                                                      OffContent="Off" OnContent="On"
+                                                      IsChecked="{Binding NoiseReduction.IsOn, Mode=TwoWay}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                            <TextBlock Text="Mic Noise Reduction" FontSize="12"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:EqualizerViewModel" DataType="{x:Type s:EqualizerViewModel}">
+                                    <ContentControl Classes="detailCard" IsVisible="{Binding HasEqualizer}">
+                                        <StackPanel>
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <StackPanel>
+                                                    <TextBlock Text="Equalizer" FontSize="16" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding RangeText}" FontSize="11"
+                                                               Opacity="0.6" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="Reset" Command="{Binding ResetCommand}"
+                                                        VerticalAlignment="Center" />
+                                            </Grid>
+                                            <ItemsControl ItemsSource="{Binding Bands}" Margin="0,16,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" Spacing="10" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="s:RangeSettingViewModel">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontSize="9" Opacity="0.7"
+                                                                       HorizontalAlignment="Center" />
+                                                            <Slider Orientation="Vertical" Height="180" MinWidth="26"
+                                                                    Minimum="{Binding Min}" Maximum="{Binding Max}"
+                                                                    TickFrequency="{Binding Step}"
+                                                                    IsSnapToTickEnabled="True"
+                                                                    Value="{Binding Value, Mode=TwoWay}"
+                                                                    Margin="0,4" />
+                                                            <TextBlock Text="{Binding ValueText}" FontSize="11"
+                                                                       FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="Changes apply immediately with every slider." FontSize="11"
+                                                       Foreground="#9aa0a6" Margin="0,14,0,0" />
+                                        </StackPanel>
+                                    </ContentControl>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:StubSectionViewModel" DataType="{x:Type s:StubSectionViewModel}">
+                                    <ContentControl Classes="detailCard">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Note}" FontSize="12" Foreground="#c4c7cc"
+                                                       TextWrapping="Wrap" MaxWidth="520" />
+                                            <ItemsControl ItemsSource="{Binding Items}" Margin="0,14,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Classes="chip">
+                                                            <TextBlock Text="{Binding}" FontSize="11"
+                                                                       Foreground="#6a6f76" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </ContentControl>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:CameraTabViewModel" DataType="{x:Type s:CameraTabViewModel}">
+                                    <StackPanel>
+                                        <Border Width="480" Height="360" CornerRadius="8" Margin="0,0,0,14"
+                                                Background="#0b0b0e" IsVisible="{Binding Preview.IsActive}"
+                                                ClipToBounds="True">
+                                            <Image Source="{Binding Preview.Surface}" Stretch="Uniform" />
+                                        </Border>
+                                        <ItemsControl ItemsSource="{Binding Controls}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:CameraControlVm">
+                                                    <StackPanel Margin="0,8,0,0">
+                                                        <TextBlock Text="{Binding Name}" FontSize="11" Opacity="0.7" />
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <Slider Grid.Column="0" Minimum="{Binding Min}"
+                                                                    Maximum="{Binding Max}"
+                                                                    TickFrequency="{Binding Step}"
+                                                                    IsSnapToTickEnabled="True"
+                                                                    Value="{Binding Value, Mode=TwoWay}" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Value}"
+                                                                       FontSize="14" FontWeight="SemiBold"
+                                                                       Margin="12,0,0,0" VerticalAlignment="Center" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="s:PresetsViewModel" DataType="{x:Type s:PresetsViewModel}">
+                                    <StackPanel>
+                                        <TextBlock Text="Presets" FontSize="16" FontWeight="Bold" />
+                                        <ItemsControl ItemsSource="{Binding Presets}" Margin="0,12,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="s:PresetViewModel">
+                                                    <Button Classes="pill" Content="{Binding Label}"
+                                                            Command="{Binding ApplyCommand}" Margin="0,0,8,8" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+
+                                <DataTemplate x:DataType="vm:LitraViewModel" DataType="{x:Type vm:LitraViewModel}">
+                                    <StackPanel>
+                                        <ToggleSwitch OffContent="Off" OnContent="On" IsChecked="{Binding IsOn, Mode=TwoWay}" />
+
+                                        <TextBlock Text="Brightness" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Slider Grid.Column="0" Minimum="0" Maximum="100" Value="{Binding Brightness, Mode=TwoWay}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Brightness}" FontSize="14" FontWeight="SemiBold"
+                                                       Margin="12,0,0,0" VerticalAlignment="Center" />
+                                        </Grid>
+
+                                        <TextBlock Text="Color temperature" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Slider Grid.Column="0" Minimum="{Binding MinTemperature}" Maximum="{Binding MaxTemperature}"
+                                                    Value="{Binding Temperature, Mode=TwoWay}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Temperature, StringFormat='{}{0} K'}"
+                                                       FontSize="14" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ContentControl.DataTemplates>
+                        </ContentControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+    </Panel>
+</Window>

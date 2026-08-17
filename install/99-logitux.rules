@@ -22,6 +22,6 @@ SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c09b", MODE="06
 # PRO X Wireless Gaming Headset
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0aba", MODE="0666"
 
-# Virtual input device LogiTux creates for button remapping (see
-# internal/uinput). Only needed if you use that feature.
+# Virtual input device LogiTux can create for software button remapping.
+# Only needed if/when that layer (uinput) is wired up.
 KERNEL=="uinput", MODE="0666"

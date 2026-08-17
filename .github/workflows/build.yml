@@ -10,23 +10,21 @@ on:
 permissions:
   contents: write # the release job attaches artifacts to a GitHub Release on tags
 
+env:
+  DOTNET_VERSION: "10.0.x"
+
 jobs:
   # ---------------------------------------------------------------------------
-  # Vet + unit tests on Linux (the only OS with real device backends to test).
+  # Build the whole solution (Core + App + PoC probe).
   # ---------------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          go-version-file: go.mod
-      - name: Install GUI build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
-      - run: go vet ./...
-      - run: go test ./...
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet build LogiTux.slnx
 
   # ---------------------------------------------------------------------------
   # Version string shared by all build jobs: the tag without its leading "v",
@@ -48,7 +46,8 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Linux: a stripped binary tarball plus a .deb (built with nfpm).
+  # Linux: the trimmed single-file binary (the same output `make publish`
+  # produces locally) plus a .deb (built with nfpm).
   # ---------------------------------------------------------------------------
   build-linux:
     needs: [test, version]
@@ -57,15 +56,13 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          go-version-file: go.mod
-      - name: Install GUI build dependencies
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Publish single-file binary
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
-      - name: Build
-        run: CGO_ENABLED=1 go build -ldflags "-s -w" -o bin/logitux ./cmd/logitux
+          dotnet publish src/LogiTux.App -p:PublishProfile=linux-x64 -o bin
+          mv bin/LogiTux.App bin/logitux
       - name: Package tarball
         run: |
           mkdir -p dist
@@ -81,8 +78,7 @@ jobs:
           path: dist/*
 
   # ---------------------------------------------------------------------------
-  # Windows: a GUI .exe (no console window) zipped up. Cgo uses the MinGW-w64
-  # gcc preinstalled on the GitHub windows runner image.
+  # Windows: a self-contained single-file GUI .exe, zipped up.
   # ---------------------------------------------------------------------------
   build-windows:
     needs: [test, version]
@@ -91,12 +87,17 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          go-version-file: go.mod
-      - name: Build
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Publish
         shell: bash
-        run: CGO_ENABLED=1 go build -ldflags "-H=windowsgui -s -w" -o dist/logitux.exe ./cmd/logitux
+        run: |
+          dotnet publish src/LogiTux.App -c Release -r win-x64 \
+            -p:PublishSingleFile=true -p:SelfContained=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:PublishTrimmed=true -p:TrimMode=partial -o dist
+          mv dist/LogiTux.App.exe dist/logitux.exe
       - name: Package zip
         shell: pwsh
         run: Compress-Archive -Path dist/logitux.exe -DestinationPath "dist/logitux_${env:VERSION}_windows_amd64.zip"
@@ -106,8 +107,9 @@ jobs:
           path: dist/*.zip
 
   # ---------------------------------------------------------------------------
-  # macOS: a .app bundle (Info.plist + generated .icns), zipped with ditto.
-  # Unsigned — see the README note about Gatekeeper on first launch.
+  # macOS: a .app bundle (Info.plist + generated .icns) around the published
+  # arm64 binary, zipped with ditto. Unsigned — see the README note about
+  # Gatekeeper on first launch.
   # ---------------------------------------------------------------------------
   build-macos:
     needs: [test, version]
@@ -116,11 +118,16 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          go-version-file: go.mod
-      - name: Build
-        run: CGO_ENABLED=1 go build -ldflags "-s -w" -o logitux ./cmd/logitux
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Publish
+        run: |
+          dotnet publish src/LogiTux.App -c Release -r osx-arm64 \
+            -p:PublishSingleFile=true -p:SelfContained=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:PublishTrimmed=true -p:TrimMode=partial -o bundle
+          mv bundle/LogiTux.App logitux
       - name: Assemble .app bundle
         run: |
           APP="LogiTux.app"

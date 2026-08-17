@@ -1,88 +1,56 @@
 # LogiTux
 
 A native GUI for controlling Logitech devices — the Logitech G HUB
-equivalent, built for Linux first. Written in Go. It also builds and runs
-on Windows and macOS (with a device-support caveat — see [Prebuilt
-packages](#prebuilt-packages)).
+equivalent, built for Linux first. Implemented as a .NET/Avalonia
+application. It also builds and runs on Windows and macOS (with a
+device-support caveat — see [Prebuilt packages](#prebuilt-packages)).
 
 On Linux, LogiTux talks to hardware directly over the `hidraw` interface
-(no `libhidapi` dependency, no cgo for device I/O), so installation only
-needs a Go toolchain and Fyne's usual GUI build dependencies.
-
-![LogiTux's Dashboard, styled after Logitech G HUB: one dark card per connected device with a product render (original artwork, not Logitech's — see Credit), battery level, and a settings button](images/screenshot-dashboard.png)
-![LogiTux's device page for a G Pro Wireless: a row of DPI stage presets and report rate in the panel, with a DPI Speeds track plotting each stage in the showcase](images/screenshot-mouse.png)
-![LogiTux's Litra Glow page: a power pill, temperature and brightness gradient sliders, and a render whose halo follows the light's state](images/screenshot-litra.png)
-![LogiTux's C922 page: zoom slider, pan/tilt position pad, and autofocus/auto-exposure pills with their manual sliders](images/screenshot-webcam.png)
+and to webcams through V4L2 — no `libhidapi`, no `libv4l`, no cgo — so
+installation needs nothing beyond the published single-file binary.
 
 ## Status
-
-v1 supports:
 
 - **Litra Glow / Litra Beam** key lights — power, brightness, color
   temperature.
 - **G Pro Wireless, PRO X Superlight, and PRO X Superlight 2** mice
-  (direct or via a Lightspeed receiver) — DPI and report (polling) rate
-  always, logo color on units that have one (the Superlight family
-  doesn't); battery and button remapping on units whose firmware exposes
-  the corresponding HID++ feature (see [Usage](#usage) — one of the two
-  G Pro Wireless units this was tested against doesn't expose either,
-  evidently handling them through the receiver's own protocol layer
-  instead, so both are implemented as optional and degrade gracefully
-  rather than being guaranteed). Newer mice report DPI and report rate
+  (direct or via a Lightspeed receiver) — DPI and report (polling) rate,
+  logo color on units that have one (the Superlight family doesn't),
+  battery, and button remapping on units whose firmware exposes the
+  corresponding HID++ feature. Newer mice report DPI and report rate
   through different HID++ features than the G Pro Wireless does (up to
-  8000 Hz, and DPI ranges read from the device instead of hardcoded);
-  LogiTux uses whichever the connected mouse implements, and shows the
-  device's own self-reported name when it has one. **Caveat:** the
-  Superlight-family support (both extended features, and the two new
-  product IDs) is implemented against a third-party reference
-  implementation's protocol decoding, not yet verified against physical
-  Superlight hardware, unlike the original G Pro Wireless path.
+  8000 Hz, with DPI ranges read from the device); LogiTux uses whichever
+  the connected mouse implements. **Caveat:** the Superlight-family
+  support is implemented from a third-party reference implementation's
+  protocol decoding and from the G Pro Wireless's own hardware, not yet
+  verified against physical Superlight hardware.
 - **PRO X Wireless Gaming Headset** — battery, sidetone, a full per-band
-  equalizer (band count/frequencies/dB range are read from the device,
-  not assumed), and a hardware mic noise-reduction toggle on units whose
-  firmware supports it (probed with a read; the toggle hides otherwise).
+  equalizer (band count/frequencies/dB range are read from the device),
+  and a hardware mic noise-reduction toggle on units whose firmware
+  supports it (probed with a read; the toggle hides otherwise).
 - **C920 / C920 HD Pro / C922 Pro Stream / C930e** webcams — zoom,
   pan/tilt position, autofocus and manual focus, auto and manual
-  exposure, and image tuning (brightness, contrast, saturation,
-  sharpness). Webcams aren't HID devices, so these go through a small
-  pure-Go V4L2 layer rather than hidraw; which controls exist is queried
-  from the driver per device, not assumed. Controls only — no video
-  preview yet. **Caveat:** implemented against the documented V4L2 UVC
-  control API with unit-tested ioctl marshaling, but not yet verified
-  against physical hardware, unlike everything above.
+  exposure, image tuning (brightness, contrast, saturation, sharpness),
+  and a **live preview** streamed straight off the capture node. Webcams
+  aren't HID devices, so these go through a pure .NET V4L2 layer rather
+  than hidraw; which controls exist is queried from the driver per
+  device. The preview negotiates MJPEG (YUYV fallback) and renders a
+  640×480 feed at ~15 fps.
 
 The UI is styled after Logitech's own G HUB, navigation included: the
 **Dashboard** — a near-black home screen with a cyan-blue accent — shows
-every connected device as a clickable card (product render, name,
-battery level if it has one — a bolt marks charging, and a settings
-button); clicking one opens that device's page with its full controls,
-and the back arrow in the page's top-left returns to the Dashboard. A
-device's page only exists while it's actually connected — unplugging
-drops you back on the Dashboard. Device pages are laid out like G HUB's:
-an icon rail on the left groups the device's settings into sections —
-Sensitivity (DPI, report rate), Assignments (button remapping), Lighting
-(power, brightness, color temperature, RGB logo color), and Sound
-(sidetone, mic noise reduction, equalizer) — and only the sections a
-device actually supports
-appear. The panel beside the rail holds the selected section's controls,
-and the rest of the page shows the battery level and a section-specific
-showcase. On a mouse's Sensitivity section, DPI is presented as G HUB's
-**DPI stages**: a row of preset buttons (the active one highlighted;
-click to switch the mouse to that DPI), with a *DPI Speeds* track in the
-showcase plotting each stage as a dot along a non-linear axis. On a
-headset's page the showcase is the vertical ADVANCED EQ; on a light's
-page the product render actually glows, like G HUB's Litra page — a halo
-behind it follows the power pill and the temperature and brightness
-gradient sliders live. The selected section sticks across
-LogiTux's periodic re-polling
-rather than snapping back to the first every few seconds. A system
-tray icon offers quick per-device actions (power, DPI presets) without
-opening the window.
-
-The device layer is a plugin architecture (see [Architecture](#architecture)
-below), so support for further Logitech hardware — other mice, keyboards,
-headsets, webcams — can be added incrementally without changing the GUI or
-core app.
+every connected device as a clickable card (product render, name, battery
+level if it has one, a settings button); clicking one opens that device's
+page, and the back arrow in the page's top-left returns to the Dashboard.
+A device's page only exists while it's actually connected. Device pages
+are laid out like G HUB's: an icon rail on the left groups each device's
+settings into sections — Sensitivity (DPI, report rate), Assignments
+(button remapping), Lighting (power, temperature, RGB logo color), Sound
+(sidetone, mic noise reduction, equalizer), Video/Camera/Image for
+webcams — and only the sections a device actually supports appear. DPI is
+presented as G HUB's **DPI stages**: a row of preset buttons with a *DPI
+Speeds* track plotting each stage. The webcam page carries a live
+preview above the Camera and Image tabs.
 
 ## Quick start
 
@@ -94,16 +62,11 @@ cd LogiTux
 
 `install.sh` will, on Debian/Ubuntu-based distros (including Linux Mint):
 
-1. Install the Go toolchain (`golang-go`) if it's missing.
-2. Install Fyne's build dependencies (`gcc`, `libgl1-mesa-dev`, `xorg-dev`).
-3. Build LogiTux and install it to `~/.local/bin/logitux`.
-4. Install a udev rule granting your user access to supported devices'
-   `hidraw` nodes (and `/dev/uinput`, used only if you remap a mouse
-   button), and a `.desktop` launcher entry.
-
-On other distros, install Go 1.22+ and Fyne's build dependencies yourself
-(see the [Fyne getting-started guide](https://docs.fyne.io/started/)) and
-then run `./install.sh` — it will skip the apt-specific steps.
+1. Check for the .NET 10 SDK and tell you how to get it if it's missing.
+2. Publish the trimmed single-file binary.
+3. Install it to `~/.local/bin/logitux`, a desktop launcher entry, and a
+   udev rule granting your user access to supported devices' `hidraw`
+   nodes and `/dev/uinput` (used only for button remapping when it lands).
 
 After installing, **unplug and replug your device** so the new udev rule
 applies, then launch LogiTux from your application menu or run
@@ -125,12 +88,10 @@ them to a GitHub Release:
   needs a right-click → **Open** to get past Gatekeeper.
 
 > **Platform support caveat.** LogiTux was built for Linux, where device
-> support is complete and hardware-tested. It now also **builds and runs**
-> on Windows and macOS — the full G HUB-style UI comes up — but those
-> builds currently ship a *stub* HID backend, so they find no devices yet
-> (`internal/hid`). The device plugins are already cross-platform; only a
-> native Windows (setupapi/hid.dll) or macOS (IOKit) HID backend behind
-> `hid.Default` is needed to light them up. Webcam control stays
+> support is complete and hardware-tested. It also **builds and runs** on
+> Windows and macOS — the full G HUB-style UI comes up — but those builds
+> ship a HID backend that finds no devices yet (hidraw is Linux-only;
+> the enumeration simply returns nothing elsewhere). Webcam control stays
 > Linux-only regardless, since it uses V4L2.
 
 ## Usage
@@ -141,21 +102,12 @@ the device unplugs), with whichever controls it supports — a power
 checkbox, sliders, dropdowns, a color picker. Changes are applied
 immediately.
 
-Closing the window minimizes LogiTux to the system tray rather than
-quitting; use the tray menu's "Quit" item to actually exit. The tray also
-has a submenu per connected device for one-click actions (e.g. a light's
-"Turn On"/"Turn Off", or a mouse's DPI presets) without opening the window.
-
 Devices that can't report their own state back over USB (Litra lights;
 the G Pro Wireless's DPI/report-rate/battery/color often *can* be read
 back live and are) fall back to the last value LogiTux sent, kept in
 `$XDG_CONFIG_HOME/logitux/state.json` (typically
-`~/.config/logitux/state.json`). Most settings are only ever *applied* when
-you interact with them — opening LogiTux never pushes a stale value to a
-light that's currently off, for example. Button remaps are the one
-exception (see below): they're re-applied automatically whenever a mouse
-reconnects, since a remap that silently stopped working every time the app
-restarted would defeat the point of the feature.
+`~/.config/logitux/state.json`). Most settings are only ever *applied*
+when you interact with them.
 
 ### Custom product images
 
@@ -178,86 +130,63 @@ through 0x1B04) — not universal; see [Status](#status) — its remappable
 buttons each get a dropdown to retarget them to another mouse button or a
 keyboard key, or restore "Default". If the feature isn't present, this
 section just doesn't appear; the rest of the mouse's controls are
-unaffected.
-
-This works by telling the mouse to stop sending that button's normal click
-and instead report presses as a raw event, which LogiTux then translates
-into a synthetic key/button press via a virtual input device
-(`/dev/uinput`). That means **a remapped button only works while LogiTux is
-running** — if LogiTux isn't running (not started yet, crashed, or killed
-without a chance to clean up), that button does nothing at all, unlike
-every other setting here, which simply stops being adjustable rather than
-breaking the button. LogiTux reverts every active remap when it exits
-normally (including from the tray's "Quit"), so a clean shutdown always
-restores normal clicking.
+unaffected. The software-side emission layer (uinput) that makes remaps
+work while the app runs is still to be wired up, so on the current
+hardware this page carries the G HUB-spec enumeration as a stub.
 
 ## Architecture
 
 ```
-cmd/logitux/             GUI entry point (Fyne): window, dashboard, device pages, systray
-internal/hid/            HID Backend interface (hid.go) + Linux hidraw impl
-                           (hidraw_linux.go) and a no-op stub for other OSes (hid_stub.go)
-internal/hidpp/          HID++ 2.0 transport: feature calls, notifications, shared battery
-                           logic, device self-naming (DEVICE_TYPE_AND_NAME)
-internal/uinput/         Virtual input device for button remapping (Linux; stub elsewhere)
-internal/device/         Plugin registry and capability interfaces
-internal/device/litra/   Litra Glow/Beam plugin (simple vendor HID protocol)
-internal/device/gpro/    G Pro Wireless / PRO X Superlight (1 & 2) plugin (HID++ 2.0 protocol)
-internal/device/prox/    PRO X Wireless Gaming Headset plugin (HID++ 2.0 protocol)
-internal/device/webcam/  C920/C922/C930e webcam plugin (V4L2 controls, not HID; Linux only)
-internal/v4l2/           Pure-Go V4L2 control ioctls: query/get/set on /dev/videoN
-internal/config/         JSON-backed last-known-state store
-packaging/               nfpm .deb config, Debian postinstall, macOS Info.plist template
-install/                 udev rules and .desktop launcher entry
-.github/workflows/       CI: vet/test + per-OS builds (.deb, .exe, .app) and tag releases
+src/LogiTux.Core/         Hardware library: hidraw I/O, HID++ transport,
+                            device drivers, V4L2 controls + capture
+src/LogiTux.Core/Hid/     Linux hidraw backend: /sys/class/hidraw discovery
+                            + /dev/hidrawN I/O
+src/LogiTux.Core/Hidpp/   HID++ 2.0 transport: feature calls, notifications,
+                            shared battery logic, device self-naming
+src/LogiTux.Core/Devices/ Device drivers: Litra / GProMouse / Prox / V4l2Camera
+                            (each a sealed class owning its hidraw node or
+                            /dev/videoN) + WebcamPreview streaming loop
+src/LogiTux.Core/V4l2/    Pure .NET V4L2 ioctls (controls + format/buffer/
+                            stream), struct layouts from the kernel ABI
+src/LogiTux.Core/Config/  JSON-backed last-known-state store
+src/LogiTux.App/          Avalonia GUI: dashboard, device pages, section
+                            rail, webcam preview, debounced slider writes
+src/LogiTux.Poc/          Console probe for hardware iteration
+packaging/                nfpm .deb config, Debian postinstall, macOS plist
+install/                  udev rules and .desktop launcher entry
+.github/workflows/        CI: build + per-OS publishes (.deb, .exe, .app)
 ```
 
-**Cross-platform structure.** The HID-facing types (`Info`, `Handle`,
-`Backend`, `Default`) live in the build-tag-free `internal/hid/hid.go`, so
-every device plugin compiles on all three OSes. `hidraw_linux.go` supplies
-the real Linux backend; `hid_stub.go` (`//go:build !linux`) supplies a
-no-op one so Windows/macOS builds run but find nothing until a native
-backend is written. The `uinput` package is split the same way (real
-Linux `/dev/uinput` device vs. a stub `Open` that reports remapping
-unavailable), and the Linux-only webcam plugin is imported from
-`cmd/logitux/plugins_linux.go` rather than the shared import block.
-
-Device support is added as a plugin: a package registers the vendor/product
-IDs it handles with `internal/device.Register` in an `init()` function (see
-`internal/device/litra/litra.go`, `internal/device/gpro/gpro.go`, or
-`internal/device/prox/prox.go`), and implements whichever capability
-interfaces the hardware supports (`PowerControl`, `DPIControl`,
-`ButtonRemapControl`, `EqualizerControl`, ...). The GUI never references a
-specific product — it type-asserts each discovered `device.Device` against
-the capability interfaces and renders whatever controls apply. Adding a new
-device means writing a new plugin package and importing it (for its
-`init()` side effect) from `cmd/logitux/main.go`; no other files need to
-change. Hardware that doesn't live behind hidraw at all can instead
-register a whole discovery function with `device.RegisterDiscoverer` —
-that's how the webcam plugin scans `/sys/class/video4linux` for V4L2
-devices while everything else goes through the hidraw backend.
-
-Most Logitech peripherals beyond simple lights (mice, keyboards, headsets)
-speak Logitech's **HID++ 2.0** protocol: a request/response feature-call
-system rather than the Litra's fixed byte sequences. `internal/hidpp`
-implements that transport (feature discovery via the Root feature,
-request/response matching, unsolicited notifications), so a new HID++
-device plugin only needs to know which feature IDs it uses and their byte
-layouts — see `internal/device/gpro` for a worked example covering DPI,
-report rate, RGB, and button remapping, and `internal/device/prox` for a
-per-band equalizer. Battery support (a four-tier feature-ID fallback, since
-different units implement different ones — verified the hard way, against
-real hardware that needed each of the fallback tiers) lives once in
-`internal/hidpp/battery.go` and both device plugins just call into it,
-rather than each having its own copy.
+**Structure.** `LogiTux.Core` is pure .NET (BCL + P/Invoke only): each
+supported product is a sealed driver class opening its own `hidraw`
+node (or a `/dev/videoN` node for webcams, discovered via
+`/sys/class/video4linux`). The HID++ transport (feature discovery via the
+Root feature, request/response matching, unsolicited notifications) lives
+once in `Hidpp/`, and both the mouse and headset drivers call into it;
+battery support is likewise shared (`HidppBattery.cs`). The GUI never
+references a specific product — it type-asserts each discovered device
+against the capability surface and renders whatever applies. Sliders and
+other hardware writes are debounced (see `DeviceCardViewModel`); reads
+tolerate asleep devices and surface that via card `Status` rather than
+exceptions. The webcam's live preview runs a V4L2 mmap ring in Core
+(`WebcamPreview`) and renders into a WriteableBitmap in the App
+(`CameraPreviewViewModel`), with both MJPEG and YUYV paths verified on
+hardware.
 
 ## Development
 
 ```bash
-make build   # -> bin/logitux
-make test    # go vet + go test ./...
-make run     # build and run
+dotnet build                          # build the solution
+make build                            # alias for the above
+make publish                          # single-file binary -> bin/logitux
+make run                              # build and run the app
+dotnet run --project src/LogiTux.Poc  # probe hardware (see AGENTS.md)
 ```
+
+A console probe (`src/LogiTux.Poc`) exercises every hardware path without
+the GUI: enumerate HID devices, read/write DPI, RGB, sidetone, EQ bands,
+camera controls, and stream preview frames (`--preview`,
+`--preview-yuyv`).
 
 ## Credit
 
@@ -269,16 +198,20 @@ trademarks, used here only to identify the hardware being controlled.
 The Litra USB protocol was originally reverse-engineered by
 [kharyam/go-litra-driver](https://github.com/kharyam/go-litra-driver) (and
 its Python predecessor, [kharyam/litra-driver](https://github.com/kharyam/litra-driver)).
-LogiTux's Litra plugin is an independent implementation of that protocol,
-built on LogiTux's own pure-Go hidraw backend rather than `libhidapi`.
+LogiTux's Litra driver is an independent implementation of that protocol,
+built on its own pure-BCL hidraw backend rather than `libhidapi`.
 
-HID++ 2.0 feature byte layouts used by the G Pro Wireless plugin were
+HID++ 2.0 feature byte layouts used by the G Pro Wireless driver were
 verified against [pwr-Solaar/Solaar](https://github.com/pwr-Solaar/Solaar),
 the most complete existing Linux HID++ implementation, rather than guessed
 from general protocol documentation. The Superlight family's extended DPI
 (`0x2202`) and report rate (`0x8061`) features were cross-referenced
 against [AprilNEA/OpenLogi](https://github.com/AprilNEA/OpenLogi)
 (MIT/Apache-2.0), an independently written Rust HID++ implementation.
+
+LogiTux itself was previously implemented in Go; the current .NET codebase
+replaced it entirely, and its V4L2/HID++ constants and quirks still follow
+that verified lineage where noted in the code.
 
 ## License
 
