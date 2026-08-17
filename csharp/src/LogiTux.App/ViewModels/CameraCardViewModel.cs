@@ -110,7 +110,12 @@ public sealed class CameraCardViewModel : DeviceCardViewModel
             controls.Add(vm);
         }
 
-        return new CameraCardViewModel(camera, controls) { Status = "ready" };
+        var card = new CameraCardViewModel(camera, controls)
+        {
+            Status = "ready",
+            Summary = $"{controls.Count} controls",
+        };
+        return card;
     }
 
     public override ValueTask DisposeAsync()

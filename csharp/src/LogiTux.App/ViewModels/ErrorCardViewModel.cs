@@ -15,5 +15,6 @@ public sealed partial class ErrorCardViewModel : DeviceCardViewModel
         Subtitle = subtitle;
         Status = message;
         Art = art;
+        Summary = message;
     }
 }

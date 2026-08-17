@@ -51,10 +51,12 @@ public sealed partial class HeadsetViewModel : DeviceCardViewModel
             BatteryPercent = percent;
             IsCharging = charging;
             HasBattery = true;
+            Summary = $"{percent}% battery";
         }
         catch (InvalidOperationException)
         {
             HasBattery = false;
+            Summary = "no battery feature";
         }
         catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
         {

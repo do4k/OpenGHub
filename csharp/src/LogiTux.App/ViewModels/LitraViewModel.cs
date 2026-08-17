@@ -37,7 +37,7 @@ public sealed partial class LitraViewModel : DeviceCardViewModel
     {
         Stream stream = backend.Open(info);
         var light = new LitraLight(stream);
-        return new LitraViewModel(
+        var vm = new LitraViewModel(
             light,
             stream,
             LitraLight.FriendlyName(info.ProductId),
@@ -47,13 +47,29 @@ public sealed partial class LitraViewModel : DeviceCardViewModel
                 ? ArtCatalog.Load("litra-glow.svg")
                 : ArtCatalog.Load("litra-beam.svg"),
         };
+        vm.UpdateSummary();
+        return vm;
     }
 
-    partial void OnIsOnChanged(bool value) => _ = SetPowerAsync(value).ConfigureAwait(false);
+    private void UpdateSummary() => Summary = $"{IsOn} · {Brightness}% · {Temperature} K";
 
-    partial void OnBrightnessChanged(int value) => _ = DebounceWriteAsync(() => _light.SetBrightnessAsync(value), 200);
+    partial void OnIsOnChanged(bool value)
+    {
+        UpdateSummary();
+        _ = SetPowerAsync(value).ConfigureAwait(false);
+    }
 
-    partial void OnTemperatureChanged(int value) => _ = DebounceWriteAsync(() => _light.SetTemperatureAsync(value), 200);
+    partial void OnBrightnessChanged(int value)
+    {
+        UpdateSummary();
+        _ = DebounceWriteAsync(() => _light.SetBrightnessAsync(value), 200);
+    }
+
+    partial void OnTemperatureChanged(int value)
+    {
+        UpdateSummary();
+        _ = DebounceWriteAsync(() => _light.SetTemperatureAsync(value), 200);
+    }
 
     private async Task SetPowerAsync(bool on)
     {

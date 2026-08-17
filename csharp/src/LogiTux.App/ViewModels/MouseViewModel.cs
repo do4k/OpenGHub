@@ -63,6 +63,14 @@ public sealed partial class MouseViewModel : DeviceCardViewModel
         return vm;
     }
 
+    /// <summary>One-line tile status: battery plus DPI/rate when we have them.</summary>
+    private void UpdateSummary()
+    {
+        Summary = HasBattery
+            ? $"{BatteryPercent}% battery · {Dpi} DPI"
+            : $"{Dpi} DPI";
+    }
+
     private async Task LoadAsync()
     {
         IsBusy = true;
@@ -125,6 +133,7 @@ public sealed partial class MouseViewModel : DeviceCardViewModel
         {
             Status = $"battery read: {e.Message}";
         }
+        UpdateSummary();
     }
 
     public override ValueTask DisposeAsync() => _mouse.DisposeAsync();

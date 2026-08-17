@@ -24,6 +24,28 @@ public partial class MainWindowViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool isRefreshing;
 
+    [ObservableProperty]
+    private DeviceCardViewModel? selected;
+
+    /// <summary>True while a device page is open; the dashboard shows otherwise.</summary>
+    public bool IsDetail => Selected is not null;
+
+    /// <summary>True when no devices are connected; shows the empty-state hint.</summary>
+    public bool IsEmpty => Devices.Count == 0;
+
+    partial void OnSelectedChanged(DeviceCardViewModel? value)
+    {
+        OnPropertyChanged(nameof(IsDetail));
+    }
+
+    partial void OnDevicesChanged(IReadOnlyList<DeviceCardViewModel> value)
+    {
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    [RelayCommand]
+    private void Back() => Selected = null;
+
     [RelayCommand]
     private async Task RefreshAsync()
     {
@@ -35,6 +57,8 @@ public partial class MainWindowViewModel : ObservableObject, IAsyncDisposable
             foreach (DeviceCardViewModel old in _devices)
                 await old.DisposeAsync().ConfigureAwait(false);
             _devices = (await DeviceManager.DiscoverAsync(_backend).ConfigureAwait(false)).ToList();
+            foreach (DeviceCardViewModel card in _devices)
+                card.GoToDetail = () => Selected = card;
             Devices = _devices;
             _batteryTimer.Start();
         }

@@ -4,157 +4,208 @@
         x:Class="LogiTux.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="LogiTux"
-        Width="900"
-        Height="600"
-        MinWidth="700"
-        MinHeight="400">
+        Width="1000"
+        Height="700"
+        MinWidth="760"
+        MinHeight="480">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </Window.KeyBindings>
 
     <Window.Styles>
-        <Style Selector="ContentControl.card">
+        <Style Selector="ContentControl.detailCard">
             <Setter Property="Background" Value="#1f1f1f" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="24,20" />
-            <Setter Property="Margin" Value="0,0,16,16" />
-            <Setter Property="MinWidth" Value="280" />
-            <Setter Property="MaxWidth" Value="420" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MaxWidth" Value="640" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+
+        <Style Selector="Button.tile">
+            <Setter Property="Background" Value="#1f1f1f" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,20,20" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tile:hover">
+            <Setter Property="Background" Value="#2a2a2a" />
         </Style>
     </Window.Styles>
 
-    <DockPanel Margin="16">
-        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-            <TextBlock Text="LogiTux" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
-            <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}"
-                    HorizontalAlignment="Right" VerticalAlignment="Center" />
+    <Panel>
+        <!-- ============================ Dashboard ============================ -->
+        <DockPanel Margin="16" IsVisible="{Binding !IsDetail}">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+                <TextBlock Text="LogiTux" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+                <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <TextBlock Text="No supported Logitech devices found.
+Make sure the device is plugged in and the udev rule has been applied (see the README)."
+                       TextWrapping="Wrap" TextAlignment="Center" Foreground="#9aa0a6"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding IsEmpty}" />
+
+            <ScrollViewer IsVisible="{Binding !IsEmpty}">
+                <ItemsControl ItemsSource="{Binding Devices}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DeviceCardViewModel">
+                            <Button Classes="tile" Command="{Binding OpenCommand}">
+                                <Grid Width="230" Height="260" RowDefinitions="Auto,*,Auto">
+                                    <StackPanel Grid.Row="0" Margin="16,14,16,0">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"
+                                                   FontSize="13" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Summary}" Opacity="0.6" FontSize="11"
+                                                   Margin="0,3,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Image Grid.Row="1" Source="{Binding Art}" Stretch="Uniform"
+                                           MaxWidth="180" MaxHeight="150"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Margin="16,10" />
+                                    <TextBlock Grid.Row="2" Text="&#x2699;" FontSize="16"
+                                               HorizontalAlignment="Right" Margin="0,0,16,12" />
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </ScrollViewer>
         </DockPanel>
 
-        <ScrollViewer>
-            <ItemsControl ItemsSource="{Binding Devices}">
-                <ItemsControl.DataTemplates>
-                    <DataTemplate x:DataType="vm:ErrorCardViewModel" DataType="{x:Type vm:ErrorCardViewModel}">
-                        <ContentControl Classes="card">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
-                                <Image Source="{Binding Art}" Height="110" Stretch="Uniform"
-                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
-                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#f28b82"
-                                           Margin="0,0,0,4" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </ContentControl>
-                    </DataTemplate>
+        <!-- ============================ Device page ============================ -->
+        <DockPanel Margin="16" IsVisible="{Binding IsDetail}">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,16">
+                <Button Content="&#x2190;" FontSize="16" Command="{Binding BackCommand}"
+                        Padding="10,4" VerticalAlignment="Center" />
+                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Selected.DisplayName}" FontSize="20"
+                               FontWeight="Bold" />
+                    <TextBlock Text="{Binding Selected.Subtitle}" Opacity="0.6" FontSize="11" />
+                </StackPanel>
+            </StackPanel>
 
-                    <DataTemplate x:DataType="vm:MouseViewModel" DataType="{x:Type vm:MouseViewModel}">
-                        <ContentControl Classes="card">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
-                                <Image Source="{Binding Art}" Height="120" Stretch="Uniform"
-                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
-                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
-
-                                <TextBlock Text="DPI" FontSize="11" Opacity="0.7" />
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Slider Grid.Column="0" Minimum="{Binding DpiMin}" Maximum="{Binding DpiMax}"
-                                            TickFrequency="{Binding DpiStep}" IsSnapToTickEnabled="True"
-                                            Value="{Binding Dpi, Mode=TwoWay}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Dpi}" FontSize="14" FontWeight="SemiBold"
-                                               Margin="12,0,0,0" VerticalAlignment="Center" />
-                                </Grid>
-
-                                <TextBlock Text="Report rate" FontSize="11" Opacity="0.7" Margin="0,12,0,4" />
-                                <ComboBox ItemsSource="{Binding ReportRates}"
-                                          SelectedItem="{Binding SelectedReportRate, Mode=TwoWay}" />
-
-                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,12,0,0"
-                                            IsVisible="{Binding HasBattery}">
-                                    <TextBlock Text="{Binding BatteryPercent, StringFormat='Battery: {0}%'}"
-                                               FontSize="12" />
-                                    <TextBlock Text="(charging)" FontSize="11" Foreground="#81c995"
-                                               IsVisible="{Binding IsCharging}" />
+            <ScrollViewer>
+                <ContentControl Content="{Binding Selected}">
+                    <ContentControl.DataTemplates>
+                        <DataTemplate x:DataType="vm:ErrorCardViewModel" DataType="{x:Type vm:ErrorCardViewModel}">
+                            <ContentControl Classes="detailCard">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Status}" Foreground="#f28b82"
+                                               FontSize="12" TextWrapping="Wrap" />
                                 </StackPanel>
-                            </StackPanel>
-                        </ContentControl>
-                    </DataTemplate>
+                            </ContentControl>
+                        </DataTemplate>
 
-                    <DataTemplate x:DataType="vm:LitraViewModel" DataType="{x:Type vm:LitraViewModel}">
-                        <ContentControl Classes="card">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
-                                <Image Source="{Binding Art}" Height="100" Stretch="Uniform"
-                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
-                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
+                        <DataTemplate x:DataType="vm:MouseViewModel" DataType="{x:Type vm:MouseViewModel}">
+                            <ContentControl Classes="detailCard">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8"
+                                               Margin="0,0,0,8" TextWrapping="Wrap" />
 
-                                <ToggleSwitch OffContent="Off" OnContent="On" IsChecked="{Binding IsOn, Mode=TwoWay}" />
+                                    <TextBlock Text="DPI" FontSize="11" Opacity="0.7" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Slider Grid.Column="0" Minimum="{Binding DpiMin}" Maximum="{Binding DpiMax}"
+                                                TickFrequency="{Binding DpiStep}" IsSnapToTickEnabled="True"
+                                                Value="{Binding Dpi, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Dpi}" FontSize="14" FontWeight="SemiBold"
+                                                   Margin="12,0,0,0" VerticalAlignment="Center" />
+                                    </Grid>
 
-                                <TextBlock Text="Brightness" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Slider Grid.Column="0" Minimum="0" Maximum="100" Value="{Binding Brightness, Mode=TwoWay}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Brightness}" FontSize="14" FontWeight="SemiBold"
-                                               Margin="12,0,0,0" VerticalAlignment="Center" />
-                                </Grid>
+                                    <TextBlock Text="Report rate" FontSize="11" Opacity="0.7" Margin="0,12,0,4" />
+                                    <ComboBox ItemsSource="{Binding ReportRates}"
+                                              SelectedItem="{Binding SelectedReportRate, Mode=TwoWay}" />
 
-                                <TextBlock Text="Color temperature" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Slider Grid.Column="0" Minimum="{Binding MinTemperature}" Maximum="{Binding MaxTemperature}"
-                                            Value="{Binding Temperature, Mode=TwoWay}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Temperature, StringFormat='{}{0} K'}"
-                                               FontSize="14" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
-                                </Grid>
-                            </StackPanel>
-                        </ContentControl>
-                    </DataTemplate>
-
-                    <DataTemplate x:DataType="vm:CameraCardViewModel" DataType="{x:Type vm:CameraCardViewModel}">
-                        <ContentControl Classes="card">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
-                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
-                                <ItemsControl ItemsSource="{Binding Controls}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:CameraControlVm">
-                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
-                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11" Opacity="0.7"
-                                                           Width="90" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                <Slider Grid.Column="1" Minimum="{Binding Min}" Maximum="{Binding Max}"
-                                                        TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
-                                                        Value="{Binding Value, Mode=TwoWay}" Margin="8,0" />
-                                                <TextBlock Grid.Column="2" Text="{Binding Value}" FontSize="12" FontWeight="SemiBold"
-                                                           Width="36" TextAlignment="Right" VerticalAlignment="Center" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </ContentControl>
-                    </DataTemplate>
-
-                    <DataTemplate x:DataType="vm:HeadsetViewModel" DataType="{x:Type vm:HeadsetViewModel}">
-                        <ContentControl Classes="card">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
-                                <Image Source="{Binding Art}" Height="100" Stretch="Uniform"
-                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
-                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0"
-                                            IsVisible="{Binding HasBattery}">
-                                    <TextBlock Text="{Binding BatteryPercent, StringFormat='Battery: {0}%'}"
-                                               FontSize="20" FontWeight="SemiBold" />
-                                    <TextBlock Text="(charging)" FontSize="11" Foreground="#81c995" VerticalAlignment="Center"
-                                               IsVisible="{Binding IsCharging}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,12,0,0"
+                                                IsVisible="{Binding HasBattery}">
+                                        <TextBlock Text="{Binding BatteryPercent, StringFormat='Battery: {0}%'}"
+                                                   FontSize="12" />
+                                        <TextBlock Text="(charging)" FontSize="11" Foreground="#81c995"
+                                                   IsVisible="{Binding IsCharging}" />
+                                    </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </ContentControl>
-                    </DataTemplate>
-                </ItemsControl.DataTemplates>
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            </ItemsControl>
-        </ScrollViewer>
-    </DockPanel>
+                            </ContentControl>
+                        </DataTemplate>
+
+                        <DataTemplate x:DataType="vm:LitraViewModel" DataType="{x:Type vm:LitraViewModel}">
+                            <ContentControl Classes="detailCard">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8"
+                                               Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                                    <ToggleSwitch OffContent="Off" OnContent="On" IsChecked="{Binding IsOn, Mode=TwoWay}" />
+
+                                    <TextBlock Text="Brightness" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="100" Value="{Binding Brightness, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Brightness}" FontSize="14" FontWeight="SemiBold"
+                                                   Margin="12,0,0,0" VerticalAlignment="Center" />
+                                    </Grid>
+
+                                    <TextBlock Text="Color temperature" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Slider Grid.Column="0" Minimum="{Binding MinTemperature}" Maximum="{Binding MaxTemperature}"
+                                                Value="{Binding Temperature, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Temperature, StringFormat='{}{0} K'}"
+                                                   FontSize="14" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                    </Grid>
+                                </StackPanel>
+                            </ContentControl>
+                        </DataTemplate>
+
+                        <DataTemplate x:DataType="vm:HeadsetViewModel" DataType="{x:Type vm:HeadsetViewModel}">
+                            <ContentControl Classes="detailCard">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8"
+                                               Margin="0,0,0,8" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0"
+                                                IsVisible="{Binding HasBattery}">
+                                        <TextBlock Text="{Binding BatteryPercent, StringFormat='Battery: {0}%'}"
+                                                   FontSize="20" FontWeight="SemiBold" />
+                                        <TextBlock Text="(charging)" FontSize="11" Foreground="#81c995" VerticalAlignment="Center"
+                                                   IsVisible="{Binding IsCharging}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </ContentControl>
+                        </DataTemplate>
+
+                        <DataTemplate x:DataType="vm:CameraCardViewModel" DataType="{x:Type vm:CameraCardViewModel}">
+                            <ContentControl Classes="detailCard">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8"
+                                               Margin="0,0,0,8" TextWrapping="Wrap" />
+                                    <ItemsControl ItemsSource="{Binding Controls}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:CameraControlVm">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11" Opacity="0.7"
+                                                               Width="90" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    <Slider Grid.Column="1" Minimum="{Binding Min}" Maximum="{Binding Max}"
+                                                            TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
+                                                            Value="{Binding Value, Mode=TwoWay}" Margin="8,0" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding Value}" FontSize="12" FontWeight="SemiBold"
+                                                               Width="36" TextAlignment="Right" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ContentControl>
+                        </DataTemplate>
+                    </ContentControl.DataTemplates>
+                </ContentControl>
+            </ScrollViewer>
+        </DockPanel>
+    </Panel>
 </Window>
