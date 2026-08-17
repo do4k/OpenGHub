@@ -171,9 +171,11 @@ public sealed class GProMouse : IAsyncDisposable
         }
     }
 
-    /// <summary>Picks the best available identifier for a receiver-paired mouse:
+    /// <summary>
+    /// Picks the best available identifier for a receiver-paired mouse:
     /// a virtual per-peripheral hidraw node (product 0x4079) often carries a real
-    /// hardware ID even when the receiver has no USB serial descriptor.</summary>
+    /// hardware ID even when the receiver has no USB serial descriptor.
+    /// </summary>
     private static string ResolveMouseSerial(HidBackend backend, string receiverSerial)
     {
         foreach (var wi in backend.Enumerate(VendorId, ProductWired))
@@ -182,8 +184,10 @@ public sealed class GProMouse : IAsyncDisposable
         return receiverSerial;
     }
 
-    /// <summary>Resolves every feature the plugin uses, mirroring buildMouse:
-    /// DPI and report rate are expected (classic or extended), battery optional.</summary>
+    /// <summary>
+    /// Resolves every feature the plugin uses, mirroring buildMouse:
+    /// DPI and report rate are expected (classic or extended), battery optional.
+    /// </summary>
     private static async Task<GProMouse> BuildAsync(HidppConn conn, byte deviceIndex, string serial, ushort productId)
     {
         // DPI: classic 0x2201 on the G Pro Wireless generation, or its successor
@@ -255,8 +259,10 @@ public sealed class GProMouse : IAsyncDisposable
     public (int Min, int Max, int Step) DpiRange =>
         _extDpiFeatureIndex != 0 ? (_extDpi.Min, _extDpi.Max, _extDpi.Step) : (ClassicDpiMin, ClassicDpiMax, ClassicDpiStep);
 
-    /// <summary>Reads the sensor's current DPI live from the device, falling back
-    /// to its default DPI if no override is set.</summary>
+    /// <summary>
+    /// Reads the sensor's current DPI live from the device, falling back
+    /// to its default DPI if no override is set.
+    /// </summary>
     public Task<int> GetDpiAsync() =>
         _extDpiFeatureIndex != 0 ? GetExtendedDpiAsync() : GetClassicDpiAsync();
 
@@ -271,8 +277,10 @@ public sealed class GProMouse : IAsyncDisposable
         return current;
     }
 
-    /// <summary>Sets DPI, clamped to the sensor's range and rounded to the nearest
-    /// supported step.</summary>
+    /// <summary>
+    /// Sets DPI, clamped to the sensor's range and rounded to the nearest
+    /// supported step.
+    /// </summary>
     public async Task SetDpiAsync(int dpi)
     {
         if (_extDpiFeatureIndex != 0)
@@ -299,9 +307,11 @@ public sealed class GProMouse : IAsyncDisposable
 
     private readonly record struct ExtDpiInfo(bool HasY, int Min, int Max, int Step);
 
-    /// <summary>Reads the sensor's capabilities and supported DPI range: a stream
+    /// <summary>
+    /// Reads the sensor's capabilities and supported DPI range: a stream
     /// of 16-bit words — fixed values and step-tagged ranges, 0x0000-terminated,
-    /// possibly split across pages — collapsed to min/max/step.</summary>
+    /// possibly split across pages — collapsed to min/max/step.
+    /// </summary>
     private static async Task<ExtDpiInfo> DiscoverExtendedDpiAsync(HidppConn conn, byte deviceIndex, byte featureIndex)
     {
         byte[] caps = await conn.CallAsync(deviceIndex, featureIndex, ExtDpiFuncGetSensorCapabilities, [DpiSensorIndex]).ConfigureAwait(false);
@@ -327,9 +337,11 @@ public sealed class GProMouse : IAsyncDisposable
         throw new InvalidDataException("gpro: extended DPI range list never terminated");
     }
 
-    /// <summary>Decodes the supported-DPI word stream; done=false (no error) while
+    /// <summary>
+    /// Decodes the supported-DPI word stream; done=false (no error) while
     /// the 0x0000 terminator hasn't arrived yet, telling the caller to fetch
-    /// another page.</summary>
+    /// another page.
+    /// </summary>
     internal static (int Min, int Max, int Step, bool Done) ParseExtendedDpiRanges(IReadOnlyList<byte> stream)
     {
         var words = new List<ushort>();
@@ -383,8 +395,10 @@ public sealed class GProMouse : IAsyncDisposable
         return (min, max, step, true);
     }
 
-    /// <summary>Reads the current X-axis DPI, falling back to default when no
-    /// override is set. Response: [sensor, dpiX:2, defaultX:2, dpiY:2, defaultY:2, lod].</summary>
+    /// <summary>
+    /// Reads the current X-axis DPI, falling back to default when no
+    /// override is set. Response: [sensor, dpiX:2, defaultX:2, dpiY:2, defaultY:2, lod].
+    /// </summary>
     private async Task<int> GetExtendedDpiAsync()
     {
         byte[] resp = await _conn.CallAsync(_deviceIndex, _extDpiFeatureIndex, ExtDpiFuncGetDpiParameters, [DpiSensorIndex]).ConfigureAwait(false);
@@ -396,9 +410,11 @@ public sealed class GProMouse : IAsyncDisposable
         return current;
     }
 
-    /// <summary>Writes DPI to both axes when the sensor has a Y axis (the GUI
+    /// <summary>
+    /// Writes DPI to both axes when the sensor has a Y axis (the GUI
     /// exposes a single linked value). The set call writes DPI and lift-off
-    /// distance together, so current LOD is read first and preserved.</summary>
+    /// distance together, so current LOD is read first and preserved.
+    /// </summary>
     private async Task SetExtendedDpiAsync(int dpi)
     {
         dpi = ClampToStep(dpi, _extDpi.Min, _extDpi.Max, _extDpi.Step);
@@ -431,8 +447,10 @@ public sealed class GProMouse : IAsyncDisposable
     private const byte ReportRateFuncGet = 0x10;
     private const byte ReportRateFuncSet = 0x20;
 
-    /// <summary>Queries which report intervals (1-8 ms, bitmask over bit i =
-    /// interval i+1) the device supports, returned as Hz ordered fastest first.</summary>
+    /// <summary>
+    /// Queries which report intervals (1-8 ms, bitmask over bit i =
+    /// interval i+1) the device supports, returned as Hz ordered fastest first.
+    /// </summary>
     private static async Task<int[]> GetReportRateOptionsAsync(HidppConn conn, byte deviceIndex, byte featureIndex)
     {
         byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, ReportRateFuncGetList, Array.Empty<byte>()).ConfigureAwait(false);
@@ -465,7 +483,9 @@ public sealed class GProMouse : IAsyncDisposable
         return 1000 / resp[0];
     }
 
-    /// <summary>Sets report rate, snapping hz to whichever supported option is closest.</summary>
+    /// <summary>
+    /// Sets report rate, snapping hz to whichever supported option is closest.
+    /// </summary>
     public async Task SetReportRateAsync(int hz)
     {
         if (_extRateFeatureIndex != 0)
@@ -486,11 +506,15 @@ public sealed class GProMouse : IAsyncDisposable
     private const byte ExtRateConnWired = 0;
     private const byte ExtRateConnGamingWireless = 1; // Lightspeed
 
-    /// <summary>Maps the feature's rate index (0-6) to Hz.</summary>
+    /// <summary>
+    /// Maps the feature's rate index (0-6) to Hz.
+    /// </summary>
     private static readonly int[] ExtRateHz = [125, 250, 500, 1000, 2000, 4000, 8000];
 
-    /// <summary>Reads the bitmask of rates supported on the current connection
-    /// (bit i = ExtRateHz[i]) as Hz, fastest first.</summary>
+    /// <summary>
+    /// Reads the bitmask of rates supported on the current connection
+    /// (bit i = ExtRateHz[i]) as Hz, fastest first.
+    /// </summary>
     private static async Task<int[]> GetExtendedReportRateOptionsAsync(HidppConn conn, byte deviceIndex, byte featureIndex)
     {
         byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, ExtRateFuncGetRateList, Array.Empty<byte>()).ConfigureAwait(false);
@@ -507,9 +531,11 @@ public sealed class GProMouse : IAsyncDisposable
         return [.. options];
     }
 
-    /// <summary>Reads the active rate. The read takes a connection type; the likely
+    /// <summary>
+    /// Reads the active rate. The read takes a connection type; the likely
     /// one is tried first based on how the mouse is addressed (direct = wired,
-    /// receiver-paired = Lightspeed), falling back to the other.</summary>
+    /// receiver-paired = Lightspeed), falling back to the other.
+    /// </summary>
     private async Task<int> GetExtendedReportRateAsync()
     {
         byte first = ExtRateConnGamingWireless, second = ExtRateConnWired;
@@ -537,7 +563,9 @@ public sealed class GProMouse : IAsyncDisposable
         throw new InvalidOperationException("gpro: get extended report rate", lastErr);
     }
 
-    /// <summary>Snaps hz to the closest supported option and writes its rate index.</summary>
+    /// <summary>
+    /// Snaps hz to the closest supported option and writes its rate index.
+    /// </summary>
     private async Task SetExtendedReportRateAsync(int hz)
     {
         hz = ClosestOption(hz, _reportRateOptions);
@@ -549,9 +577,11 @@ public sealed class GProMouse : IAsyncDisposable
 
     // ---- Battery ----
 
-    /// <summary>Reads battery percent/charging via whichever feature the device
+    /// <summary>
+    /// Reads battery percent/charging via whichever feature the device
     /// resolved to. Throws InvalidOperationException when the device has no
-    /// supported battery feature.</summary>
+    /// supported battery feature.
+    /// </summary>
     public Task<(int Percent, bool Charging)> GetBatteryAsync() =>
         HidppBattery.ReadBatteryAsync(_conn, _deviceIndex, _batteryFeatureIndex, _batteryKind);
 

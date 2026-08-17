@@ -3,7 +3,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace LogiTux.App.ViewModels;
 
-/// <summary>Base for a device card shown on the dashboard.</summary>
+/// <summary>
+/// Base for a device card shown on the dashboard.
+/// </summary>
 public abstract partial class DeviceCardViewModel : ObservableObject, IAsyncDisposable
 {
     [ObservableProperty]
@@ -16,10 +18,14 @@ public abstract partial class DeviceCardViewModel : ObservableObject, IAsyncDisp
 
     public string Subtitle { get; init; } = "";
 
-    /// <summary>Product render shown at the top of the card; null hides it.</summary>
+    /// <summary>
+    /// Product render shown at the top of the card; null hides it.
+    /// </summary>
     public SvgImage? Art { get; init; }
 
-    /// <summary>Debounces slider-driven writes so dragging doesn't spam the device.</summary>
+    /// <summary>
+    /// Debounces slider-driven writes so dragging doesn't spam the device.
+    /// </summary>
     protected CancellationTokenSource? DebounceCts { get; private set; }
 
     protected async Task DebounceWriteAsync(Func<Task> write, int delayMs = 250)

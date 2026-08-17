@@ -5,9 +5,11 @@ using LogiTux.Core.Hidpp;
 
 namespace LogiTux.App.ViewModels;
 
-/// <summary>Card for a G Pro Wireless family mouse: DPI + report rate controls
+/// <summary>
+/// Card for a G Pro Wireless family mouse: DPI + report rate controls
 /// backed by GProMouse, plus battery. Hardware is asleep-gated, so every read
-/// can fail with a timeout — surfaced via Status.</summary>
+/// can fail with a timeout — surfaced via Status.
+/// </summary>
 public sealed partial class MouseViewModel : DeviceCardViewModel
 {
     private readonly GProMouse _mouse;

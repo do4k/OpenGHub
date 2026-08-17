@@ -3,8 +3,10 @@ using System.Text;
 
 namespace LogiTux.Core.Hidpp;
 
-/// <summary>DEVICE_TYPE_AND_NAME (0x0005): the device's own marketing name,
-/// readable in fixed-size chunks. Ported from name.go.</summary>
+/// <summary>
+/// DEVICE_TYPE_AND_NAME (0x0005): the device's own marketing name,
+/// readable in fixed-size chunks. Ported from name.go.
+/// </summary>
 public static class HidppName
 {
     public const ushort FeatureDeviceTypeAndName = 0x0005;
@@ -12,14 +14,18 @@ public static class HidppName
     private const byte NameFuncGetCount = 0x00; // -> [nameLength]
     private const byte NameFuncGetName = 0x10;  // [charIndex] -> up to 16 name bytes
 
-    /// <summary>Guards against a device reporting an implausible name length and
-    /// this issuing dozens of calls for it.</summary>
+    /// <summary>
+    /// Guards against a device reporting an implausible name length and
+    /// this issuing dozens of calls for it.
+    /// </summary>
     private const int MaxDeviceNameLen = 64;
 
-    /// <summary>Reads the device's marketing name (e.g. "PRO X SUPERLIGHT"),
+    /// <summary>
+    /// Reads the device's marketing name (e.g. "PRO X SUPERLIGHT"),
     /// paging through the name until the reported length is collected. Throws if
     /// the device doesn't expose the feature; callers treat the name as a
-    /// nice-to-have and fall back to a product-ID-derived name.</summary>
+    /// nice-to-have and fall back to a product-ID-derived name.
+    /// </summary>
     public static async Task<string> GetDeviceNameAsync(HidppConn conn, byte deviceIndex)
     {
         byte? idx = await HidppRoot.GetFeatureIndexAsync(conn, deviceIndex, FeatureDeviceTypeAndName).ConfigureAwait(false)

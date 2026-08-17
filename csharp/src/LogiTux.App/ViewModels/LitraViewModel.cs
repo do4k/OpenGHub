@@ -4,8 +4,10 @@ using LogiTux.Core.Hid;
 
 namespace LogiTux.App.ViewModels;
 
-/// <summary>Card for a Litra Glow/Beam: write-only protocol, so state shown here
-/// is what we last sent.</summary>
+/// <summary>
+/// Card for a Litra Glow/Beam: write-only protocol, so state shown here
+/// is what we last sent.
+/// </summary>
 public sealed partial class LitraViewModel : DeviceCardViewModel
 {
     private readonly LitraLight _light;

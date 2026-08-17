@@ -2,10 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace LogiTux.Core.V4l2;
 
-/// <summary>Minimal Video4Linux2 control API: querying and setting controls
+/// <summary>
+/// Minimal Video4Linux2 control API: querying and setting controls
 /// (zoom, pan/tilt, focus, exposure, image tuning) via the VIDIOC_QUERYCAP /
 /// QUERYCTRL / G_CTRL / S_CTRL ioctls, mirroring internal/v4l2/v4l2.go.
-/// No capture support (no libv4l, no cgo) — pure BCL P/Invoke.</summary>
+/// No capture support (no libv4l, no cgo) — pure BCL P/Invoke.
+/// </summary>
 public sealed class V4l2Device : IDisposable
 {
     // Control IDs, from linux/v4l2-controls.h. User class is 0x00980900 + n;
@@ -23,12 +25,16 @@ public sealed class V4l2Device : IDisposable
     public const uint CtrlFocusAuto = 0x009a0900 + 12;
     public const uint CtrlZoomAbsolute = 0x009a0900 + 13;
 
-    /// <summary>v4l2_exposure_auto_type menu values for CtrlExposureAuto.</summary>
+    /// <summary>
+    /// v4l2_exposure_auto_type menu values for CtrlExposureAuto.
+    /// </summary>
     public const int ExposureManual = 1;
     public const int ExposureAperturePrio = 3;
 
-    /// <summary>Capability flag (v4l2_capability.device_caps): the capture node
-    /// among a webcam's several /dev/videoN siblings.</summary>
+    /// <summary>
+    /// Capability flag (v4l2_capability.device_caps): the capture node
+    /// among a webcam's several /dev/videoN siblings.
+    /// </summary>
     public const uint CapVideoCapture = 0x00000001;
 
     private const uint FlagDisabled = 0x0001;
@@ -89,9 +95,11 @@ public sealed class V4l2Device : IDisposable
             throw new IOException($"v4l2: ioctl {_path}: error {Marshal.GetLastPInvokeError()}");
     }
 
-    /// <summary>Returns the device's card name and device_caps flags
+    /// <summary>
+    /// Returns the device's card name and device_caps flags
     /// (v4l2_capability layout: driver[16], card[32], bus_info[32], version
-    /// u32, capabilities u32, device_caps u32, reserved u32[3]).</summary>
+    /// u32, capabilities u32, device_caps u32, reserved u32[3]).
+    /// </summary>
     public (string Card, uint DeviceCaps) QueryCap()
     {
         var buf = new byte[SizeofCapability];
@@ -99,10 +107,12 @@ public sealed class V4l2Device : IDisposable
         return (CString(buf, 16, 32), BitConverter.ToUInt32(buf, 88));
     }
 
-    /// <summary>Range of a control, or false if the device lacks it (or it is
+    /// <summary>
+    /// Range of a control, or false if the device lacks it (or it is
     /// disabled), mirroring QueryControl's skip-don't-fail contract.
     /// (v4l2_queryctrl layout: id u32, type u32, name[32], minimum s32,
-    /// maximum s32, step s32, default_value s32, flags u32, reserved u32[2].)</summary>
+    /// maximum s32, step s32, default_value s32, flags u32, reserved u32[2].)
+    /// </summary>
     public bool TryQueryControl(uint id, out int min, out int max, out int step, out int defaultValue)
     {
         min = max = step = defaultValue = 0;
@@ -125,8 +135,10 @@ public sealed class V4l2Device : IDisposable
         return true;
     }
 
-    /// <summary>Reads a control's current value (v4l2_control layout: id u32,
-    /// value s32).</summary>
+    /// <summary>
+    /// Reads a control's current value (v4l2_control layout: id u32,
+    /// value s32).
+    /// </summary>
     public int Get(uint id)
     {
         var buf = new byte[SizeofControl];
@@ -135,7 +147,9 @@ public sealed class V4l2Device : IDisposable
         return BitConverter.ToInt32(buf, 4);
     }
 
-    /// <summary>Writes a control's value.</summary>
+    /// <summary>
+    /// Writes a control's value.
+    /// </summary>
     public void Set(uint id, int value)
     {
         var buf = new byte[SizeofControl];

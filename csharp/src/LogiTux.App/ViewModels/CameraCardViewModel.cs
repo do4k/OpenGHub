@@ -3,8 +3,10 @@ using LogiTux.Core.Devices.Camera;
 
 namespace LogiTux.App.ViewModels;
 
-/// <summary>One V4L2 control on a camera card: a slider bound to the driver
-/// value with debounced writes, mirroring the other cards' controls.</summary>
+/// <summary>
+/// One V4L2 control on a camera card: a slider bound to the driver
+/// value with debounced writes, mirroring the other cards' controls.
+/// </summary>
 public sealed partial class CameraControlVm : ObservableObject
 {
     private readonly V4l2Camera _camera;
@@ -18,7 +20,7 @@ public sealed partial class CameraControlVm : ObservableObject
     public int Default { get; }
 
     [ObservableProperty]
-    private int value;
+    public partial int Value { get; set; }
 
     public CameraControlVm(V4l2Camera camera, CameraControl control)
     {
@@ -31,9 +33,11 @@ public sealed partial class CameraControlVm : ObservableObject
         Default = control.Default;
     }
 
-    /// <summary>Reads the current driver value; returns false if the read
+    /// <summary>
+    /// Reads the current driver value; returns false if the read
     /// failed (control momentarily disabled, node gone), leaving Value at
-    /// Min so the UI still shows a well-formed row.</summary>
+    /// Min so the UI still shows a well-formed row.
+    /// </summary>
     public bool TryLoadValue()
     {
         try
@@ -74,8 +78,10 @@ public sealed partial class CameraControlVm : ObservableObject
     }
 }
 
-/// <summary>Card for a Logitech UVC webcam: one slider per control the
-/// driver reports.</summary>
+/// <summary>
+/// Card for a Logitech UVC webcam: one slider per control the
+/// driver reports.
+/// </summary>
 public sealed class CameraCardViewModel : DeviceCardViewModel
 {
     private readonly V4l2Camera _camera;

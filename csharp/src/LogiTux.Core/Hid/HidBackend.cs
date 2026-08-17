@@ -9,8 +9,10 @@ public sealed class HidBackend
 {
     private const string ClassPath = "/sys/class/hidraw";
 
-    /// <summary>Enumerates all HID devices matching <paramref name="vendorId"/>;
-    /// a <paramref name="productId"/> of 0 matches any product.</summary>
+    /// <summary>
+    /// Enumerates all HID devices matching <paramref name="vendorId"/>;
+    /// a <paramref name="productId"/> of 0 matches any product.
+    /// </summary>
     public IReadOnlyList<DeviceInfo> Enumerate(ushort vendorId, ushort productId = 0)
     {
         var results = new List<DeviceInfo>();
@@ -39,16 +41,20 @@ public sealed class HidBackend
         return results;
     }
 
-    /// <summary>Opens the device for read/write. The returned stream is fully
-    /// async-capable; blocking reads on char devices work naturally.</summary>
+    /// <summary>
+    /// Opens the device for read/write. The returned stream is fully
+    /// async-capable; blocking reads on char devices work naturally.
+    /// </summary>
     public Stream Open(DeviceInfo info) =>
         new FileStream(info.Path, FileMode.Open, FileAccess.ReadWrite,
             FileShare.ReadWrite, 20, FileOptions.Asynchronous);
 
     private readonly record struct HidUevent(ushort VendorId, ushort ProductId, string? Uniq);
 
-    /// <summary>Parses vendor/product IDs from HID_ID ("&lt;bus&gt;:&lt;vendor&gt;:&lt;product&gt;")
-    /// and captures HID_UNIQ, mirroring readUevent in hidraw_linux.go.</summary>
+    /// <summary>
+    /// Parses vendor/product IDs from HID_ID ("&lt;bus&gt;:&lt;vendor&gt;:&lt;product&gt;")
+    /// and captures HID_UNIQ, mirroring readUevent in hidraw_linux.go.
+    /// </summary>
     private static bool TryReadUevent(string devDir, out HidUevent u)
     {
         u = default;
@@ -83,10 +89,12 @@ public sealed class HidBackend
         return true;
     }
 
-    /// <summary>Walks up the sysfs hierarchy from the HID device directory to the
+    /// <summary>
+    /// Walks up the sysfs hierarchy from the HID device directory to the
     /// owning USB device directory (identified by an "idVendor" file) and reads
     /// its "serial" attribute. Stops at the first such directory whether or not
-    /// serial exists there, mirroring readSerial in hidraw_linux.go.</summary>
+    /// serial exists there, mirroring readSerial in hidraw_linux.go.
+    /// </summary>
     private static string? TryReadSerial(string devDir)
     {
         string? real = null;

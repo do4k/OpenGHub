@@ -39,8 +39,10 @@ public sealed class LitraLight
         await SendAsync(0x1c, powerByte).ConfigureAwait(false);
     }
 
-    /// <summary><paramref name="percent"/> is clamped to 0-100 and scaled to the
-    /// device's raw brightness range.</summary>
+    /// <summary>
+    /// <paramref name="percent"/> is clamped to 0-100 and scaled to the
+    /// device's raw brightness range.
+    /// </summary>
     public async Task SetBrightnessAsync(int percent)
     {
         percent = Math.Clamp(percent, 0, 100);
@@ -49,17 +51,21 @@ public sealed class LitraLight
         await SendAsync(0x4c, 0x00, raw).ConfigureAwait(false);
     }
 
-    /// <summary><paramref name="kelvin"/> is clamped to the device's supported
-    /// range before being sent.</summary>
+    /// <summary>
+    /// <paramref name="kelvin"/> is clamped to the device's supported
+    /// range before being sent.
+    /// </summary>
     public async Task SetTemperatureAsync(int kelvin)
     {
         kelvin = Math.Clamp(kelvin, MinTemperatureK, MaxTemperatureK);
         await SendAsync(0x9c, (byte)(kelvin >> 8), (byte)kelvin).ConfigureAwait(false);
     }
 
-    /// <summary>Builds and writes a 20-byte Litra report: report ID 0x11, the
+    /// <summary>
+    /// Builds and writes a 20-byte Litra report: report ID 0x11, the
     /// 0xff 0x04 lighting-feature prefix, a one-byte command, then payload bytes
-    /// zero-padded to the device's fixed report length.</summary>
+    /// zero-padded to the device's fixed report length.
+    /// </summary>
     private async Task SendAsync(byte command, params byte[] payload)
     {
         var report = new byte[20];

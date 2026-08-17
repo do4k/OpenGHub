@@ -3,8 +3,10 @@ using System.Threading.Channels;
 
 namespace LogiTux.Core.Hidpp;
 
-/// <summary>A HID++ error response: the device rejected a call instead of returning
-/// a normal result. <see cref="Function"/> is in pre-shifted form (0x00, 0x10, ...).</summary>
+/// <summary>
+/// A HID++ error response: the device rejected a call instead of returning
+/// a normal result. <see cref="Function"/> is in pre-shifted form (0x00, 0x10, ...).
+/// </summary>
 public sealed class HidppErrorException : Exception
 {
     public HidppErrorException(byte featureIndex, byte function, byte code)
@@ -20,7 +22,9 @@ public sealed class HidppErrorException : Exception
     public byte Code { get; }
 }
 
-/// <summary>An unsolicited HID++ report: one that didn't match any pending call.</summary>
+/// <summary>
+/// An unsolicited HID++ report: one that didn't match any pending call.
+/// </summary>
 public sealed record Notification(byte DeviceIndex, byte[] Data);
 
 /// <summary>
@@ -35,11 +39,15 @@ public sealed class HidppConn : IAsyncDisposable
     private const byte ReportIdLong = 0x11;
     private const int LongReportLen = 20;
 
-    /// <summary>Addresses a device connected directly (wired USB or Bluetooth),
-    /// as opposed to one paired through a receiver.</summary>
+    /// <summary>
+    /// Addresses a device connected directly (wired USB or Bluetooth),
+    /// as opposed to one paired through a receiver.
+    /// </summary>
     public const byte DeviceIndexDirect = 0xff;
 
-    /// <summary>The Root feature is always at feature index 0 per the spec.</summary>
+    /// <summary>
+    /// The Root feature is always at feature index 0 per the spec.
+    /// </summary>
     public const byte RootFeatureIndex = 0x00;
 
     private readonly Stream _stream;
@@ -88,12 +96,16 @@ public sealed class HidppConn : IAsyncDisposable
             new BoundedChannelOptions(16) { FullMode = BoundedChannelFullMode.DropWrite });
     }
 
-    /// <summary>Reader for unsolicited reports; never blocks the read loop —
-    /// reports are dropped rather than stalling response delivery.</summary>
+    /// <summary>
+    /// Reader for unsolicited reports; never blocks the read loop —
+    /// reports are dropped rather than stalling response delivery.
+    /// </summary>
     public ChannelReader<Notification> Notifications => _notifications.Reader;
 
-    /// <summary>Sets how long subsequent calls wait for a response. Useful to
-    /// shorten it while probing several device indices behind a receiver.</summary>
+    /// <summary>
+    /// Sets how long subsequent calls wait for a response. Useful to
+    /// shorten it while probing several device indices behind a receiver.
+    /// </summary>
     public void SetTimeout(TimeSpan timeout)
     {
         lock (_gate) _timeout = timeout;
@@ -180,11 +192,13 @@ public sealed class HidppConn : IAsyncDisposable
         }
     }
 
-    /// <summary>Continuously reads reports, delivering each to whichever call is
+    /// <summary>
+    /// Continuously reads reports, delivering each to whichever call is
     /// waiting, or else to the notifications channel. Reads are gated on
     /// poll(2) with a 500ms timeout: a blocking read() on a char device can't be
     /// cancelled from .NET (Go unblocks these via its netpoller; FileStream's
-    /// thread-pool reads cannot), so polling keeps shutdown prompt.</summary>
+    /// thread-pool reads cannot), so polling keeps shutdown prompt.
+    /// </summary>
     private async Task ReadLoopAsync()
     {
         var buffer = new byte[LongReportLen];

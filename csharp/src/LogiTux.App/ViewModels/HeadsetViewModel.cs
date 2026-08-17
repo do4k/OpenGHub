@@ -5,8 +5,10 @@ using LogiTux.Core.Hidpp;
 
 namespace LogiTux.App.ViewModels;
 
-/// <summary>Card for the PRO X Wireless headset: battery only for now (sidetone
-/// and EQ come with the prox port).</summary>
+/// <summary>
+/// Card for the PRO X Wireless headset: battery only for now (sidetone
+/// and EQ come with the prox port).
+/// </summary>
 public sealed partial class HeadsetViewModel : DeviceCardViewModel
 {
     private readonly ProxHeadset _headset;

@@ -31,8 +31,10 @@ public sealed class ProxHeadset : IAsyncDisposable
 
     public string Name => _name;
 
-    /// <summary>Opens the headset's receiver node. Returns null when the device
-    /// isn't reachable (headset off/asleep).</summary>
+    /// <summary>
+    /// Opens the headset's receiver node. Returns null when the device
+    /// isn't reachable (headset off/asleep).
+    /// </summary>
     public static async Task<ProxHeadset?> OpenAsync(HidBackend backend, DeviceInfo info)
     {
         var conn = new HidppConn(backend.Open(info));
@@ -64,8 +66,10 @@ public sealed class ProxHeadset : IAsyncDisposable
         }
     }
 
-    /// <summary>Throws InvalidOperationException when the device has no supported
-    /// battery feature.</summary>
+    /// <summary>
+    /// Throws InvalidOperationException when the device has no supported
+    /// battery feature.
+    /// </summary>
     public Task<(int Percent, bool Charging)> GetBatteryAsync() =>
         HidppBattery.ReadBatteryAsync(_conn, HidppConn.DeviceIndexDirect, _batteryFeatureIndex, _batteryKind);
 

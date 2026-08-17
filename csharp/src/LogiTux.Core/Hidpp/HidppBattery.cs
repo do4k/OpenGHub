@@ -12,7 +12,9 @@ public static class HidppBattery
     public const ushort FeatureBatteryVoltage = 0x1001; // voltage-based estimate
     public const ushort FeatureAdcMeasurement = 0x1f20; // voltage-based estimate, last resort
 
-    /// <summary>Battery status byte values, shared by BATTERY_STATUS and UNIFIED_BATTERY.</summary>
+    /// <summary>
+    /// Battery status byte values, shared by BATTERY_STATUS and UNIFIED_BATTERY.
+    /// </summary>
     public const byte StatusDischarging = 0x00;
     public const byte StatusRecharging = 0x01;
     public const byte StatusAlmostFull = 0x02;
@@ -24,8 +26,10 @@ public static class HidppBattery
     public const byte FuncGetVoltage = 0x00;
     public const byte FuncGetAdc = 0x00;
 
-    /// <summary>Identifies which battery feature a device resolved to, since each
-    /// has a different function number and response layout.</summary>
+    /// <summary>
+    /// Identifies which battery feature a device resolved to, since each
+    /// has a different function number and response layout.
+    /// </summary>
     public enum BatteryKind
     {
         None,
@@ -35,9 +39,11 @@ public static class HidppBattery
         Adc,
     }
 
-    /// <summary>Tries each known battery feature in turn and returns whichever the
+    /// <summary>
+    /// Tries each known battery feature in turn and returns whichever the
     /// device supports. Throws only on an actual transport failure; a device with
-    /// no battery feature at all yields <see cref="BatteryKind.None"/>.</summary>
+    /// no battery feature at all yields <see cref="BatteryKind.None"/>.
+    /// </summary>
     public static async Task<(byte FeatureIndex, BatteryKind Kind)> ResolveBatteryFeatureAsync(HidppConn conn, byte deviceIndex)
     {
         (ushort Id, BatteryKind Kind)[] candidates =
@@ -57,8 +63,10 @@ public static class HidppBattery
         return (0, BatteryKind.None);
     }
 
-    /// <summary>Reads the current percent/charging state using a feature index and
-    /// kind previously resolved by <see cref="ResolveBatteryFeatureAsync"/>.</summary>
+    /// <summary>
+    /// Reads the current percent/charging state using a feature index and
+    /// kind previously resolved by <see cref="ResolveBatteryFeatureAsync"/>.
+    /// </summary>
     public static async Task<(int Percent, bool Charging)> ReadBatteryAsync(
         HidppConn conn, byte deviceIndex, byte featureIndex, BatteryKind kind)
     {
@@ -77,9 +85,11 @@ public static class HidppBattery
         }
     }
 
-    /// <summary>Handles UNIFIED_BATTERY and BATTERY_STATUS, whose responses both
+    /// <summary>
+    /// Handles UNIFIED_BATTERY and BATTERY_STATUS, whose responses both
     /// start with [percent, _, status]. <paramref name="zeroMeansUnknown"/> is only
-    /// true for the legacy feature.</summary>
+    /// true for the legacy feature.
+    /// </summary>
     private static async Task<(int, bool)> FromStatusCallAsync(
         HidppConn conn, byte deviceIndex, byte featureIndex, byte function, bool zeroMeansUnknown)
     {
@@ -94,9 +104,11 @@ public static class HidppBattery
         return (percent, IsChargingStatus(resp[2]));
     }
 
-    /// <summary>Handles BATTERY_VOLTAGE and ADC_MEASUREMENT, whose responses are
+    /// <summary>
+    /// Handles BATTERY_VOLTAGE and ADC_MEASUREMENT, whose responses are
     /// both [voltage(2B BE, mV), flags(1B)]; ADC requires checking a "valid" bit
-    /// first, and the two features use different flag bits for "charging".</summary>
+    /// first, and the two features use different flag bits for "charging".
+    /// </summary>
     private static async Task<(int, bool)> FromVoltageCallAsync(
         HidppConn conn, byte deviceIndex, byte featureIndex, byte function, bool isAdc)
     {
@@ -125,18 +137,22 @@ public static class HidppBattery
     private static bool IsChargingStatus(byte status) =>
         status is StatusRecharging or StatusAlmostFull or StatusFull or StatusSlowRecharge;
 
-    /// <summary>Maps single-cell Li-ion/Li-Po voltage (millivolts) to an estimated
+    /// <summary>
+    /// Maps single-cell Li-ion/Li-Po voltage (millivolts) to an estimated
     /// charge percentage, for devices that only report raw voltage. Approximate
     /// discharge-curve values, consistent with the mapping widely used for this
-    /// purpose across Linux Logitech tooling.</summary>
+    /// purpose across Linux Logitech tooling.
+    /// </summary>
     private static readonly (int Millivolts, int Percent)[] BatteryVoltageCurve =
     [
         (4186, 100), (4067, 90), (3989, 80), (3922, 70), (3859, 60), (3811, 50),
         (3778, 40), (3751, 30), (3717, 20), (3671, 10), (3646, 5), (3579, 2), (3500, 0),
     ];
 
-    /// <summary>Estimates a charge percentage from a millivolt reading via linear
-    /// interpolation over <see cref="BatteryVoltageCurve"/>.</summary>
+    /// <summary>
+    /// Estimates a charge percentage from a millivolt reading via linear
+    /// interpolation over <see cref="BatteryVoltageCurve"/>.
+    /// </summary>
     public static int EstimateBatteryPercent(int millivolts)
     {
         if (millivolts >= BatteryVoltageCurve[0].Millivolts)

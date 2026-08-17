@@ -2,16 +2,20 @@ using LogiTux.Core.V4l2;
 
 namespace LogiTux.Core.Devices.Camera;
 
-/// <summary>One camera control: name, driver-reported range and default, and
+/// <summary>
+/// One camera control: name, driver-reported range and default, and
 /// its current value. Exposure auto is presented as 0/1 even though the
-/// driver reports a v4l2_exposure_auto_type menu (1=manual, 3=auto).</summary>
+/// driver reports a v4l2_exposure_auto_type menu (1=manual, 3=auto).
+/// </summary>
 public sealed record CameraControl(string Name, int Min, int Max, int Step, int Default);
 
-/// <summary>Control device plugin for Logitech UVC webcams (C920 family, C922,
+/// <summary>
+/// Control device plugin for Logitech UVC webcams (C920 family, C922,
 /// C930e), ported from internal/device/webcam. Not a HID device: connected
 /// cameras are found by scanning /sys/class/video4linux modalias files and
 /// controlled through /dev/videoN with the V4L2 ioctls in V4l2Device.
-/// Control ranges are queried per device, never assumed.</summary>
+/// Control ranges are queried per device, never assumed.
+/// </summary>
 public sealed class V4l2Camera : IDisposable
 {
     public const ushort VendorId = 0x046d;
@@ -19,8 +23,10 @@ public sealed class V4l2Camera : IDisposable
     private const string ClassPath = "/sys/class/video4linux";
     private const string DevPath = "/dev";
 
-    /// <summary>Known Logitech UVC webcams (name allowlist; ranges come from
-    /// the driver).</summary>
+    /// <summary>
+    /// Known Logitech UVC webcams (name allowlist; ranges come from
+    /// the driver).
+    /// </summary>
     private static readonly Dictionary<ushort, string> ProductNames = new()
     {
         [0x082d] = "C920",
@@ -29,8 +35,10 @@ public sealed class V4l2Camera : IDisposable
         [0x0843] = "C930e",
     };
 
-    /// <summary>Every control we know how to render, in display order.
-    /// Names are stable identifiers the GUI keys on.</summary>
+    /// <summary>
+    /// Every control we know how to render, in display order.
+    /// Names are stable identifiers the GUI keys on.
+    /// </summary>
     private static readonly (string Name, uint Id)[] CandidateControls =
     {
         ("Zoom", V4l2Device.CtrlZoomAbsolute),
@@ -69,11 +77,15 @@ public sealed class V4l2Camera : IDisposable
 
     public void Dispose() => _dev.Dispose();
 
-    /// <summary>Opens one device node. Returns null for nodes that belong to a
+    /// <summary>
+    /// Opens one device node. Returns null for nodes that belong to a
     /// known camera but aren't its video-capture interface (UVC also exposes
-    /// metadata nodes). OPENS THE NODE — callers must Dispose.</summary>
-    /// <summary>Product name for a videoN node (for error cards), or null if
-    /// the node isn't a known Logitech camera.</summary>
+    /// metadata nodes). OPENS THE NODE — callers must Dispose.
+    /// </summary>
+    /// <summary>
+    /// Product name for a videoN node (for error cards), or null if
+    /// the node isn't a known Logitech camera.
+    /// </summary>
     public static string? ProductNameForNode(string node)
     {
         string modaliasPath = Path.Combine(ClassPath, node, "device", "modalias");
@@ -135,9 +147,11 @@ public sealed class V4l2Camera : IDisposable
         }
     }
 
-    /// <summary>Enumerates known Logitech webcam nodes via /sys/class/video4linux.
+    /// <summary>
+    /// Enumerates known Logitech webcam nodes via /sys/class/video4linux.
     /// Returns nodes of matching cameras, capture or not — callers Open() them
-    /// and get null back from the non-capture ones. Mirrors webcam.discover.</summary>
+    /// and get null back from the non-capture ones. Mirrors webcam.discover.
+    /// </summary>
     public static IReadOnlyList<string> EnumerateNodes()
     {
         var nodes = new List<string>();
@@ -172,8 +186,10 @@ public sealed class V4l2Camera : IDisposable
         _dev.Set(id, value);
     }
 
-    /// <summary>Parses a sysfs modalias like "usb:v046Dp085Cd0016..." into
-    /// vendor/product IDs.</summary>
+    /// <summary>
+    /// Parses a sysfs modalias like "usb:v046Dp085Cd0016..." into
+    /// vendor/product IDs.
+    /// </summary>
     private static bool TryUsbIds(string modaliasPath, out ushort vendor, out ushort product)
     {
         vendor = default;
@@ -196,9 +212,11 @@ public sealed class V4l2Camera : IDisposable
         return true;
     }
 
-    /// <summary>Reads the USB device serial from sysfs: the videoN symlink
+    /// <summary>
+    /// Reads the USB device serial from sysfs: the videoN symlink
     /// points at the USB interface directory; the serial lives one level up.
-    /// Falls back to the node name.</summary>
+    /// Falls back to the node name.
+    /// </summary>
     private static string SerialFor(string node)
     {
         string path = Path.Combine(ClassPath, node, "device", "..", "serial");

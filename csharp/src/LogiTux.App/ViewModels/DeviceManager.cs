@@ -6,8 +6,10 @@ using LogiTux.Core.Hid;
 
 namespace LogiTux.App.ViewModels;
 
-/// <summary>Maps enumerated Logitech HID devices to dashboard cards, mirroring
-/// internal/device's plugin registry.</summary>
+/// <summary>
+/// Maps enumerated Logitech HID devices to dashboard cards, mirroring
+/// internal/device's plugin registry.
+/// </summary>
 public static class DeviceManager
 {
     public const ushort VendorId = 0x046d;
