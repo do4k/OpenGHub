@@ -1,44 +1,26 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using LogiTux.Core.Config;
 using LogiTux.Core.Devices.Mouse;
 using LogiTux.Core.Hid;
 using LogiTux.Core.Hidpp;
+using SectionsVMs = LogiTux.App.ViewModels.Sections;
 
 namespace LogiTux.App.ViewModels;
 
 /// <summary>
-/// Card for a G Pro Wireless family mouse: DPI + report rate controls
-/// backed by GProMouse, plus battery. Hardware is asleep-gated, so every read
-/// can fail with a timeout — surfaced via Status.
+/// Card and page for a G Pro Wireless family mouse: Sensitivity (DPI
+/// stages + report rate), Assignments (stub surface) and LIGHTSYNC RGB
+/// sections backed by GProMouse, plus battery. Hardware is asleep-gated,
+/// so every read can fail with a timeout — surfaced via Status.
 /// </summary>
-public sealed partial class MouseViewModel : DeviceCardViewModel
+public sealed partial class MouseViewModel : DevicePageViewModel
 {
     private readonly GProMouse _mouse;
-    private bool _suppressRateWrite;
-
-    private MouseViewModel(GProMouse mouse, string name, string subtitle)
-    {
-        _mouse = mouse;
-        Name = name;
-        Subtitle = subtitle;
-    }
+    private readonly ConfigStore? _store;
+    private readonly SectionsVMs.MouseSensitivityViewModel _sensitivity;
 
     [ObservableProperty]
     private int dpi;
-
-    [ObservableProperty]
-    private int dpiMin;
-
-    [ObservableProperty]
-    private int dpiMax;
-
-    [ObservableProperty]
-    private int dpiStep = 50;
-
-    [ObservableProperty]
-    private IReadOnlyList<int> reportRates = Array.Empty<int>();
-
-    [ObservableProperty]
-    private int selectedReportRate;
 
     [ObservableProperty]
     private int batteryPercent;
@@ -49,13 +31,22 @@ public sealed partial class MouseViewModel : DeviceCardViewModel
     [ObservableProperty]
     private bool hasBattery;
 
-    public static async Task<MouseViewModel?> CreateAsync(HidBackend backend, DeviceInfo info)
+    private MouseViewModel(GProMouse mouse, string name, string subtitle, ConfigStore? store)
+    {
+        _mouse = mouse;
+        _store = store;
+        Name = name;
+        Subtitle = subtitle;
+        _sensitivity = new SectionsVMs.MouseSensitivityViewModel(mouse, store, mouse.Serial, value => Dpi = value);
+    }
+
+    public static async Task<MouseViewModel?> CreateAsync(HidBackend backend, DeviceInfo info, ConfigStore? store = null)
     {
         GProMouse? mouse = await GProMouse.OpenAsync(backend, info).ConfigureAwait(false);
         if (mouse is null)
             return null; // duplicate receiver sibling — the canonical node builds the card
 
-        var vm = new MouseViewModel(mouse, mouse.Name, $"serial {mouse.Serial}")
+        var vm = new MouseViewModel(mouse, mouse.Name, $"serial {mouse.Serial}", store)
         {
             Art = ArtCatalog.Load("gpro.svg"),
         };
@@ -63,7 +54,7 @@ public sealed partial class MouseViewModel : DeviceCardViewModel
         return vm;
     }
 
-    /// <summary>One-line tile status: battery plus DPI/rate when we have them.</summary>
+    /// <summary>One-line tile status: battery plus DPI when we have them.</summary>
     private void UpdateSummary()
     {
         Summary = HasBattery
@@ -73,48 +64,22 @@ public sealed partial class MouseViewModel : DeviceCardViewModel
 
     private async Task LoadAsync()
     {
-        IsBusy = true;
-        try
-        {
-            (int min, int max, int step) = _mouse.DpiRange;
-            DpiMin = min;
-            DpiMax = max;
-            DpiStep = step;
+        InstallSections([]);
+        await _sensitivity.LoadAsync().ConfigureAwait(false);
+        await RefreshBatteryAsync().ConfigureAwait(false);
 
-            Dpi = await _mouse.GetDpiAsync().ConfigureAwait(false);
-            ReportRates = _mouse.ReportRateOptions.ToList();
-            if (ReportRates.Count > 0)
-            {
-                _suppressRateWrite = true;
-                SelectedReportRate = await _mouse.GetReportRateAsync().ConfigureAwait(false);
-                _suppressRateWrite = false;
-            }
-
-            await RefreshBatteryAsync().ConfigureAwait(false);
-            Status = "ready";
-        }
-        catch (TimeoutException)
+        var sections = new List<SectionsVMs.SectionViewModel>
         {
-            Status = "mouse is asleep — move it and press Refresh";
-        }
-        catch (Exception e) when (e is HidppErrorException or InvalidDataException or IOException)
-        {
-            Status = e.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+            new("SENSITIVITY", "⊕", _sensitivity),
+            new("ASSIGNMENTS", "✥", new SectionsVMs.MouseAssignmentsViewModel()),
+        };
+        if (_mouse.RgbSupported)
+            sections.Add(new SectionsVMs.SectionViewModel("LIGHTSYNC", "◉", new SectionsVMs.MouseLightingViewModel(_mouse, _store, _mouse.Serial)));
+        InstallSections(sections);
+        Status = "ready";
     }
 
-    partial void OnDpiChanged(int value) => _ = DebounceWriteAsync(() => _mouse.SetDpiAsync(value), 300);
-
-    partial void OnSelectedReportRateChanged(int value)
-    {
-        if (_suppressRateWrite)
-            return;
-        _ = DebounceWriteAsync(() => _mouse.SetReportRateAsync(value), 100);
-    }
+    partial void OnDpiChanged(int value) => UpdateSummary();
 
     public async Task RefreshBatteryAsync()
     {
@@ -124,10 +89,12 @@ public sealed partial class MouseViewModel : DeviceCardViewModel
             BatteryPercent = percent;
             IsCharging = charging;
             HasBattery = true;
+            _sensitivity.UpdateBattery(percent, charging);
         }
         catch (InvalidOperationException)
         {
             HasBattery = false;
+            _sensitivity.UpdateBattery(0, false);
         }
         catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
         {

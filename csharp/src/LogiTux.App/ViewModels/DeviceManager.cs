@@ -1,3 +1,4 @@
+using LogiTux.Core.Config;
 using LogiTux.Core.Devices.Camera;
 using LogiTux.Core.Devices.Headset;
 using LogiTux.Core.Devices.Litra;
@@ -37,7 +38,7 @@ public static class DeviceManager
         [GProMouse.ProductSuperlight2] = "gpro.svg",
     };
 
-    public static async Task<IReadOnlyList<DeviceCardViewModel>> DiscoverAsync(HidBackend backend)
+    public static async Task<IReadOnlyList<DeviceCardViewModel>> DiscoverAsync(HidBackend backend, ConfigStore? store = null)
     {
         var cards = new List<DeviceCardViewModel>();
         foreach (DeviceInfo info in backend.Enumerate(VendorId))
@@ -52,7 +53,7 @@ public static class DeviceManager
                 }
                 else if (info.ProductId == ProxHeadset.ProductId)
                 {
-                    HeadsetViewModel? headset = await HeadsetViewModel.CreateAsync(backend, info).ConfigureAwait(false);
+                    HeadsetViewModel? headset = await HeadsetViewModel.CreateAsync(backend, info, store).ConfigureAwait(false);
                     if (headset is not null)
                         cards.Add(headset);
                 }
@@ -60,7 +61,7 @@ public static class DeviceManager
                 {
                     try
                     {
-                        MouseViewModel? mouse = await MouseViewModel.CreateAsync(backend, info).ConfigureAwait(false);
+                        MouseViewModel? mouse = await MouseViewModel.CreateAsync(backend, info, store).ConfigureAwait(false);
                         if (mouse is not null)
                             cards.Add(mouse);
                     }

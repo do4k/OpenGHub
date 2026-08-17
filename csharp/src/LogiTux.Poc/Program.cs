@@ -1,4 +1,5 @@
 using LogiTux.Core.Devices.Camera;
+using LogiTux.Core.Devices.Headset;
 using LogiTux.Core.Devices.Litra;
 using LogiTux.Core.Devices.Mouse;
 using LogiTux.Core.Hid;
@@ -18,6 +19,23 @@ string? setDpiArg = args.FirstOrDefault(a => a.StartsWith("--set-dpi=", StringCo
 if (setDpiArg is not null && int.TryParse(setDpiArg["--set-dpi=".Length..], out int v))
     setDpi = v;
 
+byte[]? setRgb = null;
+string? setRgbArg = args.FirstOrDefault(a => a.StartsWith("--set-rgb=", StringComparison.Ordinal));
+if (setRgbArg is not null && setRgbArg.Length == "--set-rgb=".Length + 6
+    && byte.TryParse(setRgbArg.AsSpan("--set-rgb=".Length, 2), System.Globalization.NumberStyles.HexNumber, null, out byte r)
+    && byte.TryParse(setRgbArg.AsSpan("--set-rgb=".Length + 2, 2), System.Globalization.NumberStyles.HexNumber, null, out byte g)
+    && byte.TryParse(setRgbArg.AsSpan("--set-rgb=".Length + 4, 2), System.Globalization.NumberStyles.HexNumber, null, out byte b))
+{
+    setRgb = [r, g, b];
+}
+
+int? setSidetone = null;
+string? setSidetoneArg = args.FirstOrDefault(a => a.StartsWith("--set-sidetone=", StringComparison.Ordinal));
+if (setSidetoneArg is not null && int.TryParse(setSidetoneArg["--set-sidetone=".Length..], out int s))
+    setSidetone = s;
+
+string? setEqArg = args.FirstOrDefault(a => a.StartsWith("--set-eq=", StringComparison.Ordinal));
+
 var backend = new HidBackend();
 var devices = backend.Enumerate(vendorId);
 if (only is not null)
@@ -35,9 +53,15 @@ foreach (var d in devices)
         continue;
     }
 
+    if (d.ProductId == ProxHeadset.ProductId)
+    {
+        await ProbeHeadsetAsync(backend, d, setSidetone, setEqArg);
+        continue;
+    }
+
     if (GProMouse.IsMouseProduct(d.ProductId))
     {
-        await ProbeMouseAsync(backend, d, setDpi);
+        await ProbeMouseAsync(backend, d, setDpi, setRgb);
         continue;
     }
 
@@ -71,7 +95,7 @@ static void ProbeCamera(string node)
     }
 }
 
-static async Task ProbeMouseAsync(HidBackend backend, DeviceInfo d, int? setDpi)
+static async Task ProbeMouseAsync(HidBackend backend, DeviceInfo d, int? setDpi, byte[]? setRgb)
 {
     GProMouse? mouse;
     try
@@ -153,6 +177,45 @@ static async Task ProbeMouseAsync(HidBackend backend, DeviceInfo d, int? setDpi)
     {
         Console.WriteLine("    pass --set-dpi=N to write a DPI and read it back");
     }
+
+    if (mouse.RgbSupported)
+    {
+        Console.WriteLine("    RGB: supported (logo zone)");
+        if (setRgb is byte[] rgb)
+        {
+            try
+            {
+                await mouse.SetColorAsync(rgb[0], rgb[1], rgb[2]);
+                Console.WriteLine($"    set RGB #{rgb[0]:x2}{rgb[1]:x2}{rgb[2]:x2}: written (no read-back protocol)");
+            }
+            catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException or InvalidOperationException)
+            {
+                Console.WriteLine($"    set RGB: {e.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("    pass --set-rgb=RRGGBB to write a static LED color");
+        }
+    }
+    else
+    {
+        Console.WriteLine("    RGB: not supported on this unit");
+    }
+
+    try
+    {
+        IReadOnlyList<ButtonInfo> buttons = await mouse.GetButtonsAsync();
+        Console.WriteLine($"    buttons: {buttons.Count} controls ({string.Join(", ", buttons.Select(b => $"{b.Name}{(b.IsDivertable ? "*" : "")}"))})");
+    }
+    catch (InvalidOperationException)
+    {
+        Console.WriteLine("    buttons: no reprogrammable controls feature");
+    }
+    catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
+    {
+        Console.WriteLine($"    buttons: {e.Message}");
+    }
 }
 
 static async Task ProbeHidppAsync(HidBackend backend, DeviceInfo d, bool verbose)
@@ -230,6 +293,114 @@ static async Task ProbeHidppAsync(HidBackend backend, DeviceInfo d, bool verbose
         {
             if (verbose) Console.WriteLine($"  {d.Path}: 0x{idx:x2} battery: {e.Message}");
         }
+    }
+}
+
+static async Task ProbeHeadsetAsync(HidBackend backend, DeviceInfo d, int? setSidetone, string? setEqArg)
+{
+    ProxHeadset? headset;
+    try
+    {
+        headset = await ProxHeadset.OpenAsync(backend, d);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        Console.WriteLine($"  {d.Path}: permission denied — run the PoC with sudo (see note above)");
+        return;
+    }
+    catch (IOException e)
+    {
+        Console.WriteLine($"  {d.Path}: {e.Message}");
+        return;
+    }
+    if (headset is null)
+        return; // duplicate receiver sibling; the canonical node printed it
+
+    await using var _ = headset;
+    Console.WriteLine($"  {d.Path}: {headset.Name} (product {ProxHeadset.ProductId:x4})");
+
+    try
+    {
+        (int percent, bool charging) = await headset.GetBatteryAsync();
+        Console.WriteLine($"    battery: {percent}% {(charging ? "(charging)" : "(discharging)")}");
+    }
+    catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
+    {
+        Console.WriteLine($"    battery: {e.Message}");
+    }
+
+    try
+    {
+        int sidetone = await headset.GetSidetoneAsync();
+        Console.WriteLine($"    sidetone: {sidetone}/100");
+        if (setSidetone is int target)
+        {
+            await headset.SetSidetoneAsync(target);
+            int after = await headset.GetSidetoneAsync();
+            Console.WriteLine($"    set sidetone {target}: read back {after} (restoring {sidetone})");
+            await headset.SetSidetoneAsync(sidetone);
+        }
+        else
+        {
+            Console.WriteLine("    pass --set-sidetone=N to write sidetone and read it back");
+        }
+    }
+    catch (InvalidOperationException)
+    {
+        Console.WriteLine("    sidetone: feature not present on this unit");
+    }
+    catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
+    {
+        Console.WriteLine($"    sidetone: {e.Message}");
+    }
+
+    try
+    {
+        Console.WriteLine($"    equalizer: {headset.EqFrequencies.Count} bands "
+            + $"({string.Join(", ", headset.EqFrequencies.Select(f => $"{f} Hz"))}) range {headset.EqRange.Min}..{headset.EqRange.Max} dB");
+        IReadOnlyList<int> levels = await headset.GetEqLevelsAsync();
+        Console.WriteLine($"    eq levels: [{string.Join(", ", levels)}]");
+        if (setEqArg is not null)
+        {
+            int[]? targets = setEqArg["--set-eq=".Length..].Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s, out int v) ? v : (int?)null)
+                .Where(v => v is not null)
+                .Select(v => v!.Value)
+                .ToArray();
+            if (targets.Length == headset.EqFrequencies.Count)
+            {
+                await headset.SetEqLevelsAsync(targets);
+                IReadOnlyList<int> after = await headset.GetEqLevelsAsync();
+                Console.WriteLine($"    set eq [{string.Join(", ", targets)}]: read back [{string.Join(", ", after)}] (restoring [{string.Join(", ", levels)}])");
+                await headset.SetEqLevelsAsync(levels);
+            }
+            else
+            {
+                Console.WriteLine($"    --set-eq needs {headset.EqFrequencies.Count} band values, got {targets.Length}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("    pass --set-eq=db,db,... to write EQ levels and read them back");
+        }
+    }
+    catch (InvalidOperationException)
+    {
+        Console.WriteLine("    equalizer: feature not present on this unit");
+    }
+    catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
+    {
+        Console.WriteLine($"    equalizer: {e.Message}");
+    }
+
+    try
+    {
+        bool nr = await headset.GetNoiseReductionAsync();
+        Console.WriteLine($"    noise reduction: {nr}");
+    }
+    catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
+    {
+        Console.WriteLine($"    noise reduction: not reported by this unit ({e.Message})");
     }
 }
 

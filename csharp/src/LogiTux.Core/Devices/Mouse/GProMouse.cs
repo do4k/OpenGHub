@@ -9,7 +9,7 @@ namespace LogiTux.Core.Devices.Mouse;
 /// Ported from internal/device/gpro (gpro.go, dpi.go, dpi_extended.go,
 /// reportrate.go, reportrate_extended.go).
 /// </summary>
-public sealed class GProMouse : IAsyncDisposable
+public sealed partial class GProMouse : IAsyncDisposable
 {
     public const ushort VendorId = 0x046d;
 
@@ -27,6 +27,8 @@ public sealed class GProMouse : IAsyncDisposable
     private const ushort FeatureExtendedDpi = 0x2202;      // successor to 0x2201 on newer mice
     private const ushort FeatureReportRate = 0x8060;
     private const ushort FeatureExtendedReportRate = 0x8061; // successor to 0x8060 on newer mice
+    private const ushort FeatureColorLedEffects = 0x8070;
+    private const ushort FeatureReprogControlsV4 = 0x1b04;
 
     private static readonly Dictionary<ushort, string> ProductNames = new()
     {
@@ -56,11 +58,21 @@ public sealed class GProMouse : IAsyncDisposable
     private readonly byte _extRateFeatureIndex;
     private readonly int[] _reportRateOptions; // Hz, fastest (highest Hz) first
 
+    // LED (0x8070) and button remapping (0x1b04) are optional; a zero
+    // feature index means the unit doesn't expose them.
+    private readonly byte _ledFeatureIndex;
+    private readonly byte _ledZoneIndex;
+    private readonly byte _ledStaticEffectIndex;
+
+    private readonly byte _buttonsFeatureIndex;
+
     private GProMouse(
         HidppConn conn, byte deviceIndex, string serial, string name, ushort productId,
         byte dpiIdx, byte extDpiIdx, ExtDpiInfo extDpi,
         byte batteryIdx, HidppBattery.BatteryKind batteryKind,
-        byte rateIdx, byte extRateIdx, int[] rateOptions)
+        byte rateIdx, byte extRateIdx, int[] rateOptions,
+        byte ledFeatureIdx, byte ledZoneIdx, byte ledStaticEffectIdx,
+        byte buttonsFeatureIdx)
     {
         _conn = conn;
         _deviceIndex = deviceIndex;
@@ -75,6 +87,10 @@ public sealed class GProMouse : IAsyncDisposable
         _reportRateFeatureIndex = rateIdx;
         _extRateFeatureIndex = extRateIdx;
         _reportRateOptions = rateOptions;
+        _ledFeatureIndex = ledFeatureIdx;
+        _ledZoneIndex = ledZoneIdx;
+        _ledStaticEffectIndex = ledStaticEffectIdx;
+        _buttonsFeatureIndex = buttonsFeatureIdx;
     }
 
     public string Name => _name;
@@ -220,6 +236,35 @@ public sealed class GProMouse : IAsyncDisposable
             rateOptions = await GetExtendedReportRateOptionsAsync(conn, deviceIndex, extRateIdx).ConfigureAwait(false);
         }
 
+        // The logo LED is optional (Superlight models have no RGB) and a
+        // unit we can't drive is as good as absent; never blocks the rest.
+        byte ledIdx = await HidppRoot.GetFeatureIndexAsync(conn, deviceIndex, FeatureColorLedEffects).ConfigureAwait(false) ?? 0;
+        byte ledZoneIdx = 0;
+        byte ledStaticEffectIdx = 0;
+        if (ledIdx != 0)
+        {
+            try
+            {
+                (ledZoneIdx, ledStaticEffectIdx) = await DiscoverLogoZoneAsync(conn, deviceIndex, ledIdx).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException)
+            {
+                ledIdx = 0;
+            }
+        }
+
+        // Button remapping is optional like battery; not every unit exposes
+        // REPROG_CONTROLS_V4 (the receiver handles remaps itself on some).
+        byte buttonsIdx = 0;
+        try
+        {
+            buttonsIdx = await DiscoverButtonsFeatureIndexAsync(conn, deviceIndex).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is TimeoutException or HidppErrorException or InvalidDataException or InvalidOperationException)
+        {
+            buttonsIdx = 0;
+        }
+
         // Prefer the device's self-reported marketing name.
         string name = ProductNames.GetValueOrDefault(productId) ?? $"G Pro ({productId:x4})";
         try
@@ -235,7 +280,9 @@ public sealed class GProMouse : IAsyncDisposable
         return new GProMouse(conn, deviceIndex, serial, name, productId,
             dpiIdx, extDpiIdx, extDpi,
             idx, kind,
-            rateIdx, extRateIdx, rateOptions);
+            rateIdx, extRateIdx, rateOptions,
+            ledIdx, ledZoneIdx, ledStaticEffectIdx,
+            buttonsIdx);
     }
 
     private static async Task<byte> RequireFeatureAsync(HidppConn conn, byte deviceIndex, ushort featureId, string name)

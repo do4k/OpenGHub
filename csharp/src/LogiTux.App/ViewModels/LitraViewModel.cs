@@ -1,25 +1,21 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using LogiTux.Core.Devices.Camera;
 using LogiTux.Core.Devices.Litra;
 using LogiTux.Core.Hid;
+using SectionsVMs = LogiTux.App.ViewModels.Sections;
 
 namespace LogiTux.App.ViewModels;
 
 /// <summary>
-/// Card for a Litra Glow/Beam: write-only protocol, so state shown here
-/// is what we last sent.
+/// Card and page for a Litra Glow/Beam: write-only protocol, so state
+/// shown here is what we last sent. The Lighting section IS this VM
+/// (power, brightness, temperature), the Presets section holds the
+/// one-tap presets.
 /// </summary>
-public sealed partial class LitraViewModel : DeviceCardViewModel
+public sealed partial class LitraViewModel : DevicePageViewModel
 {
     private readonly LitraLight _light;
     private readonly Stream _stream;
-
-    private LitraViewModel(LitraLight light, Stream stream, string name, string subtitle)
-    {
-        _light = light;
-        _stream = stream;
-        Name = name;
-        Subtitle = subtitle;
-    }
 
     [ObservableProperty]
     private bool isOn;
@@ -32,6 +28,14 @@ public sealed partial class LitraViewModel : DeviceCardViewModel
 
     public int MinTemperature => LitraLight.MinTemperatureK;
     public int MaxTemperature => LitraLight.MaxTemperatureK;
+
+    private LitraViewModel(LitraLight light, Stream stream, string name, string subtitle)
+    {
+        _light = light;
+        _stream = stream;
+        Name = name;
+        Subtitle = subtitle;
+    }
 
     public static LitraViewModel Create(HidBackend backend, DeviceInfo info)
     {
@@ -48,6 +52,11 @@ public sealed partial class LitraViewModel : DeviceCardViewModel
                 : ArtCatalog.Load("litra-beam.svg"),
         };
         vm.UpdateSummary();
+        vm.InstallSections(
+        [
+            new SectionsVMs.SectionViewModel("LIGHTING", "☀", vm),
+            new SectionsVMs.SectionViewModel("PRESETS", "▦", new SectionsVMs.PresetsViewModel(light)),
+        ]);
         return vm;
     }
 

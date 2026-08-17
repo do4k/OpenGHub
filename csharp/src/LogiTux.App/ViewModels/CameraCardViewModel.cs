@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using LogiTux.Core.Devices.Camera;
+using SectionsVMs = LogiTux.App.ViewModels.Sections;
 
 namespace LogiTux.App.ViewModels;
 
@@ -79,21 +80,26 @@ public sealed partial class CameraControlVm : ObservableObject
 }
 
 /// <summary>
-/// Card for a Logitech UVC webcam: one slider per control the
-/// driver reports.
+/// Card and page for a Logitech UVC webcam, G HUB-style: the Camera tab
+/// (zoom, pan, tilt, focus, exposure), the Video stub tab and the Image
+/// tab (brightness, contrast, saturation, sharpness).
 /// </summary>
-public sealed class CameraCardViewModel : DeviceCardViewModel
+public sealed class CameraCardViewModel : DevicePageViewModel
 {
     private readonly V4l2Camera _camera;
 
-    public IReadOnlyList<CameraControlVm> Controls { get; }
+    // Controls that belong on the Image tab; everything else camera-shaped
+    // lands on the Camera tab. Mirrors cmd/logitux/ui.go's imageAdjustments.
+    private static readonly HashSet<string> ImageAdjustments =
+    [
+        "Brightness", "Contrast", "Saturation", "Sharpness",
+    ];
 
-    private CameraCardViewModel(V4l2Camera camera, List<CameraControlVm> controls)
+    private CameraCardViewModel(V4l2Camera camera, string name, string subtitle)
     {
         _camera = camera;
-        Controls = controls;
-        Name = camera.Name;
-        Subtitle = $"serial {camera.Serial} · {camera.DevicePath}";
+        Name = name;
+        Subtitle = subtitle;
     }
 
     public static CameraCardViewModel? OpenAsync(string node)
@@ -102,19 +108,33 @@ public sealed class CameraCardViewModel : DeviceCardViewModel
         if (camera is null)
             return null; // e.g. a metadata node, not the capture interface
 
-        var controls = new List<CameraControlVm>(camera.Controls.Count);
+        var all = new List<CameraControlVm>(camera.Controls.Count);
         foreach (CameraControl control in camera.Controls)
         {
             var vm = new CameraControlVm(camera, control);
             vm.TryLoadValue();
-            controls.Add(vm);
+            all.Add(vm);
         }
 
-        var card = new CameraCardViewModel(camera, controls)
+        var card = new CameraCardViewModel(camera, camera.Name, $"serial {camera.Serial} · {camera.DevicePath}")
         {
             Status = "ready",
-            Summary = $"{controls.Count} controls",
+            Summary = $"{all.Count} controls",
         };
+        card.InstallSections(
+        [
+            new SectionsVMs.SectionViewModel("CAMERA", "☐", new SectionsVMs.CameraTabViewModel(
+                all.Where(c => !ImageAdjustments.Contains(c.Name)).ToList())),
+            new SectionsVMs.SectionViewModel("VIDEO", "▤", new SectionsVMs.StubSectionViewModel(
+                "Frame rate, field of view, shutter speed, ISO and HDR are " +
+                "hardware/encoder settings that Windows-only G HUB drives " +
+                "through its own camera plugin. On Linux, V4L2 exposes the " +
+                "capture and image controls on the other tabs; this tab " +
+                "mirrors G HUB's spec surface.",
+                ["FOV", "Shutter Speed", "ISO", "HDR"])),
+            new SectionsVMs.SectionViewModel("IMAGE", "◧", new SectionsVMs.CameraTabViewModel(
+                all.Where(c => ImageAdjustments.Contains(c.Name)).ToList())),
+        ]);
         return card;
     }
 
