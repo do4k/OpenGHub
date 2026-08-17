@@ -93,7 +93,7 @@ public static class HidppBattery
     private static async Task<(int, bool)> FromStatusCallAsync(
         HidppConn conn, byte deviceIndex, byte featureIndex, byte function, bool zeroMeansUnknown)
     {
-        byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, function, Array.Empty<byte>()).ConfigureAwait(false);
+        var resp = await conn.CallAsync(deviceIndex, featureIndex, function, Array.Empty<byte>()).ConfigureAwait(false);
         if (resp.Length < 3)
             throw new InvalidDataException("hidpp: short battery status response");
 
@@ -112,7 +112,7 @@ public static class HidppBattery
     private static async Task<(int, bool)> FromVoltageCallAsync(
         HidppConn conn, byte deviceIndex, byte featureIndex, byte function, bool isAdc)
     {
-        byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, function, Array.Empty<byte>()).ConfigureAwait(false);
+        var resp = await conn.CallAsync(deviceIndex, featureIndex, function, Array.Empty<byte>()).ConfigureAwait(false);
         if (resp.Length < 3)
             throw new InvalidDataException("hidpp: short battery voltage response");
 

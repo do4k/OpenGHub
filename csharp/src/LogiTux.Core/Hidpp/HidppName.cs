@@ -31,7 +31,7 @@ public static class HidppName
         byte? idx = await HidppRoot.GetFeatureIndexAsync(conn, deviceIndex, FeatureDeviceTypeAndName).ConfigureAwait(false)
             ?? throw new InvalidOperationException("hidpp: device has no DEVICE_TYPE_AND_NAME feature");
 
-        byte[] resp = await conn.CallAsync(deviceIndex, idx.Value, NameFuncGetCount, Array.Empty<byte>()).ConfigureAwait(false);
+        var resp = await conn.CallAsync(deviceIndex, idx.Value, NameFuncGetCount, Array.Empty<byte>()).ConfigureAwait(false);
         if (resp.Length < 1)
             throw new InvalidDataException("hidpp: short device name length response");
         int count = resp[0];

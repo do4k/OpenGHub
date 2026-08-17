@@ -68,7 +68,7 @@ public sealed class HidBackend
         {
             if (line.StartsWith("HID_ID=", StringComparison.Ordinal))
             {
-                string[] parts = line["HID_ID=".Length..].Split(':');
+                var parts = line["HID_ID=".Length..].Split(':');
                 if (parts.Length == 3 &&
                     ushort.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out ushort v) &&
                     ushort.TryParse(parts[2], System.Globalization.NumberStyles.HexNumber, null, out ushort p))

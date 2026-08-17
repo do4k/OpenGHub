@@ -268,7 +268,7 @@ public sealed class GProMouse : IAsyncDisposable
 
     private async Task<int> GetClassicDpiAsync()
     {
-        byte[] resp = await _conn.CallAsync(_deviceIndex, _dpiFeatureIndex, DpiFuncGetDpi, [DpiSensorIndex]).ConfigureAwait(false);
+        var resp = await _conn.CallAsync(_deviceIndex, _dpiFeatureIndex, DpiFuncGetDpi, [DpiSensorIndex]).ConfigureAwait(false);
         if (resp.Length < 5)
             throw new InvalidDataException("gpro: short DPI response");
         int current = (resp[1] << 8) | resp[2];
@@ -314,7 +314,7 @@ public sealed class GProMouse : IAsyncDisposable
     /// </summary>
     private static async Task<ExtDpiInfo> DiscoverExtendedDpiAsync(HidppConn conn, byte deviceIndex, byte featureIndex)
     {
-        byte[] caps = await conn.CallAsync(deviceIndex, featureIndex, ExtDpiFuncGetSensorCapabilities, [DpiSensorIndex]).ConfigureAwait(false);
+        var caps = await conn.CallAsync(deviceIndex, featureIndex, ExtDpiFuncGetSensorCapabilities, [DpiSensorIndex]).ConfigureAwait(false);
         if (caps.Length < 3)
             throw new InvalidDataException("gpro: short extended DPI capabilities response");
         bool hasY = (caps[2] & ExtDpiCapHasY) != 0;
@@ -322,7 +322,7 @@ public sealed class GProMouse : IAsyncDisposable
         var stream = new List<byte>();
         for (int page = 0; page < ExtDpiMaxRangePages; page++)
         {
-            byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, ExtDpiFuncGetDpiRanges,
+            var resp = await conn.CallAsync(deviceIndex, featureIndex, ExtDpiFuncGetDpiRanges,
                 [DpiSensorIndex, ExtDpiDirectionX, (byte)page]).ConfigureAwait(false);
             // The response echoes the addressing before the page body; verify it so
             // a mismatched page can't corrupt the accumulated stream.
@@ -401,7 +401,7 @@ public sealed class GProMouse : IAsyncDisposable
     /// </summary>
     private async Task<int> GetExtendedDpiAsync()
     {
-        byte[] resp = await _conn.CallAsync(_deviceIndex, _extDpiFeatureIndex, ExtDpiFuncGetDpiParameters, [DpiSensorIndex]).ConfigureAwait(false);
+        var resp = await _conn.CallAsync(_deviceIndex, _extDpiFeatureIndex, ExtDpiFuncGetDpiParameters, [DpiSensorIndex]).ConfigureAwait(false);
         if (resp.Length < 10)
             throw new InvalidDataException("gpro: short extended DPI response");
         int current = (resp[1] << 8) | resp[2];
@@ -422,7 +422,7 @@ public sealed class GProMouse : IAsyncDisposable
         byte lod = 0;
         try
         {
-            byte[] resp = await _conn.CallAsync(_deviceIndex, _extDpiFeatureIndex, ExtDpiFuncGetDpiParameters, [DpiSensorIndex]).ConfigureAwait(false);
+            var resp = await _conn.CallAsync(_deviceIndex, _extDpiFeatureIndex, ExtDpiFuncGetDpiParameters, [DpiSensorIndex]).ConfigureAwait(false);
             if (resp.Length >= 10)
                 lod = resp[9];
         }
@@ -453,7 +453,7 @@ public sealed class GProMouse : IAsyncDisposable
     /// </summary>
     private static async Task<int[]> GetReportRateOptionsAsync(HidppConn conn, byte deviceIndex, byte featureIndex)
     {
-        byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, ReportRateFuncGetList, Array.Empty<byte>()).ConfigureAwait(false);
+        var resp = await conn.CallAsync(deviceIndex, featureIndex, ReportRateFuncGetList, Array.Empty<byte>()).ConfigureAwait(false);
         if (resp.Length < 1)
             throw new InvalidDataException("gpro: short report rate list response");
         byte bitmask = resp[0];
@@ -477,7 +477,7 @@ public sealed class GProMouse : IAsyncDisposable
 
     private async Task<int> GetClassicReportRateAsync()
     {
-        byte[] resp = await _conn.CallAsync(_deviceIndex, _reportRateFeatureIndex, ReportRateFuncGet, Array.Empty<byte>()).ConfigureAwait(false);
+        var resp = await _conn.CallAsync(_deviceIndex, _reportRateFeatureIndex, ReportRateFuncGet, Array.Empty<byte>()).ConfigureAwait(false);
         if (resp.Length < 1 || resp[0] == 0)
             throw new InvalidDataException("gpro: invalid report rate response");
         return 1000 / resp[0];
@@ -517,7 +517,7 @@ public sealed class GProMouse : IAsyncDisposable
     /// </summary>
     private static async Task<int[]> GetExtendedReportRateOptionsAsync(HidppConn conn, byte deviceIndex, byte featureIndex)
     {
-        byte[] resp = await conn.CallAsync(deviceIndex, featureIndex, ExtRateFuncGetRateList, Array.Empty<byte>()).ConfigureAwait(false);
+        var resp = await conn.CallAsync(deviceIndex, featureIndex, ExtRateFuncGetRateList, Array.Empty<byte>()).ConfigureAwait(false);
         if (resp.Length < 2)
             throw new InvalidDataException("gpro: short extended report rate list response");
         int mask = (resp[0] << 8) | resp[1];
@@ -547,7 +547,7 @@ public sealed class GProMouse : IAsyncDisposable
         {
             try
             {
-                byte[] resp = await _conn.CallAsync(_deviceIndex, _extRateFeatureIndex, ExtRateFuncGetRate, [connType]).ConfigureAwait(false);
+                var resp = await _conn.CallAsync(_deviceIndex, _extRateFeatureIndex, ExtRateFuncGetRate, [connType]).ConfigureAwait(false);
                 if (resp.Length < 1 || resp[0] >= ExtRateHz.Length)
                 {
                     lastErr = new InvalidDataException("gpro: invalid extended report rate response");

@@ -17,7 +17,7 @@ public static class HidppRoot
     /// </summary>
     public static async Task<byte?> GetFeatureIndexAsync(HidppConn conn, byte deviceIndex, ushort featureId)
     {
-        byte[] resp = await conn.CallAsync(deviceIndex, HidppConn.RootFeatureIndex,
+        var resp = await conn.CallAsync(deviceIndex, HidppConn.RootFeatureIndex,
             RootFuncGetFeature, [(byte)(featureId >> 8), (byte)featureId]).ConfigureAwait(false);
         return resp.Length >= 1 && resp[0] != 0 ? resp[0] : null;
     }
@@ -29,7 +29,7 @@ public static class HidppRoot
     /// </summary>
     public static async Task<(byte Major, byte Minor)> PingAsync(HidppConn conn, byte deviceIndex)
     {
-        byte[] resp = await conn.CallAsync(deviceIndex, HidppConn.RootFeatureIndex,
+        var resp = await conn.CallAsync(deviceIndex, HidppConn.RootFeatureIndex,
             RootFuncGetProtocolVersion, [0x00, 0x00, 0xaa]).ConfigureAwait(false);
         if (resp.Length < 2)
             throw new InvalidDataException($"hidpp: short ping response from device 0x{deviceIndex:x2}");
