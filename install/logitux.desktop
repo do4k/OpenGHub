@@ -6,4 +6,4 @@ Exec=logitux
 Icon=logitux
 Terminal=false
 Categories=Utility;Settings;
-StartupWMClass=LogiTux
+StartupWMClass=logitux
