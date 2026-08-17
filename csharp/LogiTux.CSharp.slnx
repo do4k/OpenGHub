@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LogiTux.App/LogiTux.App.csproj" />
+    <Project Path="src/LogiTux.Core/LogiTux.Core.csproj" />
+    <Project Path="src/LogiTux.Poc/LogiTux.Poc.csproj" />
+  </Folder>
+</Solution>

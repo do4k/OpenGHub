@@ -1,0 +1,135 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LogiTux.App.ViewModels"
+        x:Class="LogiTux.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="LogiTux"
+        Width="900"
+        Height="600"
+        MinWidth="700"
+        MinHeight="400">
+
+    <Window.Styles>
+        <Style Selector="ContentControl.card">
+            <Setter Property="Background" Value="#1f1f1f" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="24,20" />
+            <Setter Property="Margin" Value="0,0,16,16" />
+            <Setter Property="MinWidth" Value="280" />
+            <Setter Property="MaxWidth" Value="420" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="16">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <TextBlock Text="LogiTux" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+            <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}"
+                    HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Devices}">
+                <ItemsControl.DataTemplates>
+                    <DataTemplate x:DataType="vm:ErrorCardViewModel" DataType="{x:Type vm:ErrorCardViewModel}">
+                        <ContentControl Classes="card">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
+                                <Image Source="{Binding Art}" Height="110" Stretch="Uniform"
+                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
+                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#f28b82"
+                                           Margin="0,0,0,4" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ContentControl>
+                    </DataTemplate>
+
+                    <DataTemplate x:DataType="vm:MouseViewModel" DataType="{x:Type vm:MouseViewModel}">
+                        <ContentControl Classes="card">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
+                                <Image Source="{Binding Art}" Height="120" Stretch="Uniform"
+                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
+                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                                <TextBlock Text="DPI" FontSize="11" Opacity="0.7" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Slider Grid.Column="0" Minimum="{Binding DpiMin}" Maximum="{Binding DpiMax}"
+                                            TickFrequency="{Binding DpiStep}" IsSnapToTickEnabled="True"
+                                            Value="{Binding Dpi, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Dpi}" FontSize="14" FontWeight="SemiBold"
+                                               Margin="12,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <TextBlock Text="Report rate" FontSize="11" Opacity="0.7" Margin="0,12,0,4" />
+                                <ComboBox ItemsSource="{Binding ReportRates}"
+                                          SelectedItem="{Binding SelectedReportRate, Mode=TwoWay}" />
+
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,12,0,0"
+                                            IsVisible="{Binding HasBattery}">
+                                    <TextBlock Text="{Binding BatteryPercent, StringFormat='Battery: {0}%'}"
+                                               FontSize="12" />
+                                    <TextBlock Text="(charging)" FontSize="11" Foreground="#81c995"
+                                               IsVisible="{Binding IsCharging}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ContentControl>
+                    </DataTemplate>
+
+                    <DataTemplate x:DataType="vm:LitraViewModel" DataType="{x:Type vm:LitraViewModel}">
+                        <ContentControl Classes="card">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
+                                <Image Source="{Binding Art}" Height="100" Stretch="Uniform"
+                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
+                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                                <ToggleSwitch OffContent="Off" OnContent="On" IsChecked="{Binding IsOn, Mode=TwoWay}" />
+
+                                <TextBlock Text="Brightness" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="100" Value="{Binding Brightness, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Brightness}" FontSize="14" FontWeight="SemiBold"
+                                               Margin="12,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <TextBlock Text="Color temperature" FontSize="11" Opacity="0.7" Margin="0,12,0,0" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Slider Grid.Column="0" Minimum="{Binding MinTemperature}" Maximum="{Binding MaxTemperature}"
+                                            Value="{Binding Temperature, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Temperature, StringFormat='{}{0} K'}"
+                                               FontSize="14" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
+                            </StackPanel>
+                        </ContentControl>
+                    </DataTemplate>
+
+                    <DataTemplate x:DataType="vm:HeadsetViewModel" DataType="{x:Type vm:HeadsetViewModel}">
+                        <ContentControl Classes="card">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="11" />
+                                <Image Source="{Binding Art}" Height="100" Stretch="Uniform"
+                                       HorizontalAlignment="Center" Margin="0,8,0,12" />
+                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#8ab4f8" Margin="0,0,0,8" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0"
+                                            IsVisible="{Binding HasBattery}">
+                                    <TextBlock Text="{Binding BatteryPercent, StringFormat='Battery: {0}%'}"
+                                               FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="(charging)" FontSize="11" Foreground="#81c995" VerticalAlignment="Center"
+                                               IsVisible="{Binding IsCharging}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ContentControl>
+                    </DataTemplate>
+                </ItemsControl.DataTemplates>
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
