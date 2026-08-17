@@ -41,8 +41,12 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            # For non-tag builds, use date-based version: YY.MM.dd-HHmm
-            echo "version=0.0.0-$(date -u +'%y.%m.%d-%H%M')" >> "$GITHUB_OUTPUT"
+            # For non-tag builds, use date-based version: YY.MM.dd.HHmm.
+            # Leading zeros are stripped so every numeric prerelease segment
+            # stays valid SemVer — .NET 10 restore silently fails (MSB4181,
+            # no logged error) on e.g. "0.0.0-26.08.17-2243".
+            adate=$(date -u +'%y.%m.%d.%H%M' | sed -E 's/\b0+([0-9])/\1/g')
+            echo "version=0.0.0-${adate}" >> "$GITHUB_OUTPUT"
           fi
 
   # ---------------------------------------------------------------------------
