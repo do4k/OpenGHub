@@ -13,9 +13,9 @@ src/**/obj/
 .DS_Store
 
 # macOS packaging scratch (produced by CI's build-macos job)
-/LogiTux.app/
+/OpenGHub.app/
 /AppIcon.iconset/
-/logitux
+/openghub
 
 # Stray tooling that shouldn't live in the repo
 /lazygit

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds and installs LogiTux for Linux: single-file binary to ~/.local/bin,
+# Builds and installs Open G Hub for Linux: single-file binary to ~/.local/bin,
 # desktop entry, and the udev HID rule.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
-echo "==> LogiTux installer"
+echo "==> Open G Hub installer"
 
 # Check for the .NET SDK (10.0 or newer).
 if ! command -v dotnet >/dev/null 2>&1; then
@@ -18,8 +18,8 @@ fi
 echo "==> Using $(dotnet --version)"
 
 echo "==> Publishing the single-file binary (takes a while)..."
-dotnet publish src/LogiTux.App -p:PublishProfile=linux-x64 -o bin
-mv bin/LogiTux.App bin/logitux
+dotnet publish src/OpenGHub.App -p:PublishProfile=linux-x64 -o bin
+mv bin/OpenGHub.App bin/openghub
 
 echo "==> Installing..."
 make install
@@ -29,9 +29,9 @@ cat <<'EOF'
 Done.
 
 Unplug and replug your Logitech device so the new udev rule takes effect,
-then launch LogiTux from your application menu, or run:
+then launch Open G Hub from your application menu, or run:
 
-    ~/.local/bin/logitux
+    ~/.local/bin/openghub
 
 (Add ~/.local/bin to your PATH if that command isn't found.)
 EOF

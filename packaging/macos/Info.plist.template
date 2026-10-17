@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>LogiTux</string>
+	<string>Open G Hub</string>
 	<key>CFBundleDisplayName</key>
-	<string>LogiTux</string>
+	<string>Open G Hub</string>
 	<key>CFBundleExecutable</key>
-	<string>logitux</string>
+	<string>openghub</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.logitux</string>
+	<string>io.github.openghub</string>
 	<key>CFBundleVersion</key>
 	<string>__VERSION__</string>
 	<key>CFBundleShortVersionString</key>

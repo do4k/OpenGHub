@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Open G Hub
+Comment=Control Logitech devices on Linux
+Exec=openghub
+Icon=openghub
+Terminal=false
+Categories=Utility;Settings;
+StartupWMClass=openghub

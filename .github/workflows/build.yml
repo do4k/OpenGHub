@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-      - run: dotnet build LogiTux.slnx
+      - run: dotnet build OpenGHub.slnx
 
   # ---------------------------------------------------------------------------
   # Version string shared by all build jobs: the tag without its leading "v",
@@ -65,20 +65,20 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Publish single-file binary
         run: |
-          dotnet publish src/LogiTux.App -p:PublishProfile=linux-x64 -o bin
-          mv bin/LogiTux.App bin/logitux
+          dotnet publish src/OpenGHub.App -p:PublishProfile=linux-x64 -o bin
+          mv bin/OpenGHub.App bin/openghub
       - name: Package tarball
         run: |
           mkdir -p dist
-          tar -czf "dist/logitux_${VERSION}_linux_amd64.tar.gz" -C bin logitux
+          tar -czf "dist/openghub_${VERSION}_linux_amd64.tar.gz" -C bin openghub
       - name: Build .deb
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
           "$(go env GOPATH)/bin/nfpm" pkg -p deb -f packaging/nfpm.yaml \
-            -t "dist/logitux_${VERSION}_amd64.deb"
+            -t "dist/openghub_${VERSION}_amd64.deb"
       - uses: actions/upload-artifact@v4
         with:
-          name: logitux-linux
+          name: openghub-linux
           path: dist/*
 
   # ---------------------------------------------------------------------------
@@ -97,17 +97,17 @@ jobs:
       - name: Publish
         shell: bash
         run: |
-          dotnet publish src/LogiTux.App -c Release -r win-x64 \
+          dotnet publish src/OpenGHub.App -c Release -r win-x64 \
             -p:PublishSingleFile=true -p:SelfContained=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:PublishTrimmed=true -p:TrimMode=partial -o dist
-          mv dist/LogiTux.App.exe dist/logitux.exe
+          mv dist/OpenGHub.App.exe dist/openghub.exe
       - name: Package zip
         shell: pwsh
-        run: Compress-Archive -Path dist/logitux.exe -DestinationPath "dist/logitux_${env:VERSION}_windows_amd64.zip"
+        run: Compress-Archive -Path dist/openghub.exe -DestinationPath "dist/openghub_${env:VERSION}_windows_amd64.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: logitux-windows
+          name: openghub-windows
           path: dist/*.zip
 
   # ---------------------------------------------------------------------------
@@ -127,16 +127,16 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Publish
         run: |
-          dotnet publish src/LogiTux.App -c Release -r osx-arm64 \
+          dotnet publish src/OpenGHub.App -c Release -r osx-arm64 \
             -p:PublishSingleFile=true -p:SelfContained=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:PublishTrimmed=true -p:TrimMode=partial -o bundle
-          mv bundle/LogiTux.App logitux
+          mv bundle/OpenGHub.App openghub
       - name: Assemble .app bundle
         run: |
-          APP="LogiTux.app"
+          APP="OpenGHub.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp logitux "$APP/Contents/MacOS/logitux"
+          cp openghub "$APP/Contents/MacOS/openghub"
           sed "s/__VERSION__/${VERSION}/g" packaging/macos/Info.plist.template > "$APP/Contents/Info.plist"
 
           # Build an .icns from the 512px Icon.png (sizes up to 512).
@@ -150,10 +150,10 @@ jobs:
       - name: Package zip
         run: |
           mkdir -p dist
-          ditto -c -k --keepParent LogiTux.app "dist/logitux_${VERSION}_macos.zip"
+          ditto -c -k --keepParent OpenGHub.app "dist/openghub_${VERSION}_macos.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: logitux-macos
+          name: openghub-macos
           path: dist/*.zip
 
   # ---------------------------------------------------------------------------

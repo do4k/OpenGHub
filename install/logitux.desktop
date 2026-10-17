@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=LogiTux
-Comment=Control Logitech devices on Linux
-Exec=logitux
-Icon=logitux
-Terminal=false
-Categories=Utility;Settings;
-StartupWMClass=logitux
