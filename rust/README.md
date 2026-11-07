@@ -56,7 +56,11 @@ on a machine with no Logitech devices attached.
 ## Status
 
 The core library and console probe are verified against real hardware (C922
-webcam controls + preview, Litra Glow). The Rune UI renders the dashboard and
-device pages; mouse/headset surfaces are present and populate live once those
-devices are awake. Webcam preview streaming and SVG device artwork are the next
-items on the list (the live preview box is currently a placeholder).
+webcam controls + preview, Litra Glow). The Rune UI renders the dashboard with
+SVG device artwork, G HUB-style device pages, and a live webcam preview
+(~15 fps, YUYV path). Mouse/headset surfaces are present and populate live once
+those devices are awake.
+
+Remaining: config-store persistence in the UI (the store itself is ported),
+slider write debouncing, and live verification of the mouse/headset drivers
+(those devices are asleep on the test machine).

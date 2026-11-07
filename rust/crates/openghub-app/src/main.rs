@@ -2,15 +2,23 @@
 //! Avalonia `OpenGHub.App`. Talks to hardware through `openghub-core`.
 
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 use openghub_core::devices::{camera, headset, litra, mouse};
 use openghub_core::hid::HidBackend;
+use openghub_core::v4l2::PIX_FMT_YUYV;
 
 use rune::tok::{self, motion, radius, space, type_};
 use rune::{
-    Align, AppSpec, Color, Cx, Drag, El, ImageCache, Key, KeyEvent, Phase, ScrollSpec, Tx, col, el,
-    row, text,
+    Align, AppSpec, Color, Cx, Drag, El, Image, ImageCache, Key, KeyEvent, Phase, ScrollSpec,
+    SurfaceFit, Tx, col, el, row, text,
 };
+
+const ART_GPRO: &[u8] = include_bytes!("../assets/gpro.svg");
+const ART_PROX: &[u8] = include_bytes!("../assets/prox.svg");
+const ART_LITRA_GLOW: &[u8] = include_bytes!("../assets/litra-glow.svg");
+const ART_LITRA_BEAM: &[u8] = include_bytes!("../assets/litra-beam.svg");
+const ART_WEBCAM: &[u8] = include_bytes!("../assets/webcam.svg");
 
 /// One shared tokio runtime for async HID++ calls (mouse/headset) and discovery.
 static RT: LazyLock<tokio::runtime::Runtime> =
@@ -25,13 +33,15 @@ struct State {
     cards: Vec<Card>,
     selected: Option<usize>,
     images: Option<ImageCache>,
+    preview_image: Option<Image>,
+    preview_seq: u64,
 }
 
 struct Card {
     name: String,
     subtitle: String,
     status: String,
-    glyph: &'static str,
+    art: &'static [u8],
     selected_section: usize,
     device: Device,
 }
@@ -77,6 +87,7 @@ struct LitraUi {
 
 struct CameraUi {
     controls: Vec<CamControl>,
+    preview: Arc<camera::WebcamPreview>,
 }
 
 struct CamControl {
@@ -180,9 +191,10 @@ async fn discover() -> Vec<Card> {
                 cards.push(c);
             }
         } else if mouse::GProMouse::is_mouse_product(info.product_id)
-            && let Ok(Some(c)) = mouse_card(&backend, &info).await {
-                cards.push(c);
-            }
+            && let Ok(Some(c)) = mouse_card(&backend, &info).await
+        {
+            cards.push(c);
+        }
     }
 
     for node in camera::V4l2Camera::enumerate_nodes() {
@@ -194,6 +206,14 @@ async fn discover() -> Vec<Card> {
     cards
 }
 
+fn litra_art(product_id: u16) -> &'static [u8] {
+    if product_id == litra::PRODUCT_BEAM {
+        ART_LITRA_BEAM
+    } else {
+        ART_LITRA_GLOW
+    }
+}
+
 fn litra_card(backend: &HidBackend, info: &openghub_core::hid::DeviceInfo) -> Card {
     let name = litra::LitraLight::friendly_name(info.product_id);
     let subtitle = format!("serial {}", info.serial.as_deref().unwrap_or("n/a"));
@@ -202,7 +222,7 @@ fn litra_card(backend: &HidBackend, info: &openghub_core::hid::DeviceInfo) -> Ca
             name,
             subtitle,
             status: "ready".to_string(),
-            glyph: "☀",
+            art: litra_art(info.product_id),
             selected_section: 0,
             device: Device::Litra(
                 Arc::new(litra::LitraLight::new(fd)),
@@ -217,7 +237,7 @@ fn litra_card(backend: &HidBackend, info: &openghub_core::hid::DeviceInfo) -> Ca
             name,
             subtitle,
             status: e.to_string(),
-            glyph: "☀",
+            art: litra_art(info.product_id),
             selected_section: 0,
             device: Device::Error(e.to_string()),
         },
@@ -252,9 +272,10 @@ async fn headset_card(
         let (min_db, max_db) = h.eq_range();
         let mut levels = vec![0; freqs.len()];
         if let Ok(live) = h.get_eq_levels().await
-            && live.len() == freqs.len() {
-                levels = live;
-            }
+            && live.len() == freqs.len()
+        {
+            levels = live;
+        }
         ui.eq = Some(EqUi {
             frequencies: freqs,
             min_db,
@@ -268,7 +289,7 @@ async fn headset_card(
         name: h.name().to_string(),
         subtitle: format!("serial {}", info.serial.as_deref().unwrap_or("n/a")),
         status: "ready".to_string(),
-        glyph: "♫",
+        art: ART_PROX,
         selected_section: 0,
         device: Device::Headset(Arc::new(h), ui),
     }))
@@ -308,7 +329,7 @@ async fn mouse_card(
         name: m.name().to_string(),
         subtitle: format!("serial {}", m.serial()),
         status: "ready".to_string(),
-        glyph: "⊕",
+        art: ART_GPRO,
         selected_section: 0,
         device: Device::Mouse(
             Arc::new(m),
@@ -343,13 +364,14 @@ fn camera_card(c: camera::V4l2Camera) -> Card {
             }
         })
         .collect();
+    let preview = Arc::new(c.create_preview());
     Card {
         name: c.name().to_string(),
         subtitle,
         status: "ready".to_string(),
-        glyph: "☐",
+        art: ART_WEBCAM,
         selected_section: 0,
-        device: Device::Camera(Arc::new(c), CameraUi { controls }),
+        device: Device::Camera(Arc::new(c), CameraUi { controls, preview }),
     }
 }
 
@@ -579,9 +601,10 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
         t: tok::theme(dark),
         accent: accent(dark),
     };
+    let scale = cx.env().scale;
     match s.selected {
         Some(i) => device_page(s, i, p),
-        None => dashboard(s, p),
+        None => dashboard(s, p, scale),
     }
 }
 
@@ -589,7 +612,7 @@ fn accent(_dark: bool) -> Color {
     tok::accent(0, true)
 }
 
-fn dashboard(s: &State, p: Paint) -> El {
+fn dashboard(s: &State, p: Paint, scale: f32) -> El {
     let t = p.t;
     col()
         .key("dashboard")
@@ -616,7 +639,7 @@ fn dashboard(s: &State, p: Paint) -> El {
                 } else {
                     let mut r = row().key("cards").gap(space::S3).flex_wrap();
                     for (i, card) in s.cards.iter().enumerate() {
-                        r = r.child(card_tile(p, i, card));
+                        r = r.child(card_tile(p, i, card, s.images.as_ref(), scale));
                     }
                     r
                 }),
@@ -638,10 +661,14 @@ fn empty_state(p: Paint) -> El {
         )
 }
 
-fn card_tile(p: Paint, i: usize, card: &Card) -> El {
+fn card_tile(p: Paint, i: usize, card: &Card, images: Option<&ImageCache>, scale: f32) -> El {
     let t = p.t;
     let name = display_name(&card.name);
     let summary = card.summary();
+    let art = (!card.art.is_empty())
+        .then_some(images)
+        .flatten()
+        .map(|im| im.svg(card.art, 160.0, scale));
     col()
         .key(format!("card-{i}"))
         .role("button")
@@ -671,12 +698,15 @@ fn card_tile(p: Paint, i: usize, card: &Card) -> El {
                 .wrap(),
         )
         .child(
-            el().key("art").grow(1.0).center().child(
-                text(card.glyph)
+            el().key("art").grow(1.0).center().child(match art {
+                Some(image) => el()
+                    .size(160.0, 130.0)
+                    .pixels_fit(image.pixels(), SurfaceFit::Fit),
+                None => text("⚙")
                     .key("glyph")
                     .font(type_::TITLE)
                     .color(t.text_secondary),
-            ),
+            }),
         )
         .child(
             row()
@@ -825,7 +855,7 @@ fn device_content(s: &State, i: usize, p: Paint) -> El {
         Device::Mouse(_, ui) => mouse_content(i, ui, section, p),
         Device::Headset(_, ui) => headset_content(i, ui, section, p),
         Device::Litra(_, ui) => litra_content(i, ui, section, p),
-        Device::Camera(_, ui) => camera_content(i, ui, section, p),
+        Device::Camera(_, ui) => camera_content(i, ui, section, p, s.preview_image.as_ref()),
         Device::Error(msg) => col().key("error").child(
             text(msg)
                 .key("msg")
@@ -1175,7 +1205,13 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
     }
 }
 
-fn camera_content(i: usize, ui: &CameraUi, section: usize, p: Paint) -> El {
+fn camera_content(
+    i: usize,
+    ui: &CameraUi,
+    section: usize,
+    p: Paint,
+    preview: Option<&Image>,
+) -> El {
     let t = p.t;
     let image_adjustments =
         |name: &str| matches!(name, "Brightness" | "Contrast" | "Saturation" | "Sharpness");
@@ -1202,8 +1238,14 @@ fn camera_content(i: usize, ui: &CameraUi, section: usize, p: Paint) -> El {
 
     let mut c = col().key("camera").gap(space::S2);
     if section == 0 {
-        c = c.child(
-            el().key("preview")
+        c = c.child(match preview {
+            Some(image) => el()
+                .key("preview")
+                .size(480.0, 360.0)
+                .radius(8.0)
+                .pixels_fit(image.pixels(), SurfaceFit::Fit),
+            None => el()
+                .key("preview")
                 .size(480.0, 360.0)
                 .radius(8.0)
                 .fill(Color::BLACK.alpha(0.3))
@@ -1213,7 +1255,7 @@ fn camera_content(i: usize, ui: &CameraUi, section: usize, p: Paint) -> El {
                         .font(type_::BODY)
                         .color(t.text_secondary),
                 ),
-        );
+        });
     }
     for ctl in selected {
         if ctl.is_bool {
@@ -1321,7 +1363,7 @@ fn demo_litra() -> Card {
         name: "Litra Glow".to_string(),
         subtitle: "serial DEMO0001".to_string(),
         status: "ready".to_string(),
-        glyph: "☀",
+        art: ART_LITRA_GLOW,
         selected_section: 0,
         device: Device::Litra(
             Arc::new(litra::LitraLight::new(fd)),
@@ -1340,10 +1382,10 @@ fn demo_cards() -> Vec<Card> {
         camera::V4l2Camera::open(n)
             .map(|c| c.is_some())
             .unwrap_or(false)
-    })
-        && let Ok(Some(c)) = camera::V4l2Camera::open(&node) {
-            cards.push(camera_card(c));
-        }
+    }) && let Ok(Some(c)) = camera::V4l2Camera::open(&node)
+    {
+        cards.push(camera_card(c));
+    }
     cards
 }
 
@@ -1357,11 +1399,88 @@ fn demo_camera_state(s: &mut State) {
     s.selected = Some(s.cards.len().saturating_sub(1));
 }
 
+fn demo_dash_state(s: &mut State) {
+    s.cards = demo_cards();
+    s.selected = None;
+}
+
+fn stop_camera_previews(s: &State) {
+    for card in &s.cards {
+        if let Device::Camera(_, ui) = &card.device {
+            ui.preview.stop();
+        }
+    }
+}
+
+fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
+    let mut rgba = bgra.to_vec();
+    for px in rgba.as_chunks_mut::<4>().0 {
+        px.swap(0, 2);
+    }
+    rgba
+}
+
+/// Drives the live webcam preview: starts the selected camera's stream and
+/// publishes each new frame as an [`Image`] for the view to draw.
+fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
+    let Some(i) = s.selected else {
+        stop_camera_previews(s);
+        s.preview_image = None;
+        return false;
+    };
+
+    let selected = match &s.cards[i].device {
+        Device::Camera(_, ui) => Some(Arc::clone(&ui.preview)),
+        _ => None,
+    };
+    for (j, card) in s.cards.iter().enumerate() {
+        if j != i
+            && let Device::Camera(_, ui) = &card.device
+        {
+            ui.preview.stop();
+        }
+    }
+
+    let Some(preview) = selected else {
+        s.preview_image = None;
+        return false;
+    };
+
+    // Keep polling at ~15 fps while the camera page is open.
+    tx.wake_after(Duration::from_millis(66));
+    let _ = preview.start(PIX_FMT_YUYV);
+
+    let Some(frame) = preview.try_get_frame() else {
+        return false;
+    };
+    if frame.sequence == s.preview_seq {
+        return false;
+    }
+    s.preview_seq = frame.sequence;
+
+    let Some(images) = &s.images else {
+        return false;
+    };
+    let image = if frame.is_jpeg {
+        images.load(frame.pixels)
+    } else {
+        let rgba = bgra_to_rgba(&frame.pixels);
+        images.rgba(frame.width as u32, frame.height as u32, rgba)
+    };
+    s.preview_image = Some(image);
+    true
+}
+
 fn main() {
     let spec = AppSpec::<State> {
         min_size: Some((760.0, 480.0)),
-        scenes: &[("demo", demo_state), ("demo-camera", demo_camera_state)],
+        scenes: &[
+            ("demo", demo_state),
+            ("demo-camera", demo_camera_state),
+            ("demo-dash", demo_dash_state),
+        ],
         setup: Some(|s, waker| s.images = Some(ImageCache::new(waker))),
+        poll: Some(poll),
         on_key: Some(on_key),
         ..AppSpec::new("Open G Hub", (1000.0, 700.0), State::default, view)
     };
