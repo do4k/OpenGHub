@@ -1,0 +1,9 @@
+[package]
+name = "openghub-poc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+openghub-core = { path = "../openghub-core" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros"] }
+libc = "0.2"

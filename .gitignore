@@ -20,3 +20,6 @@ src/**/obj/
 # Stray tooling that shouldn't live in the repo
 /lazygit
 /lazygit.tar.gz
+
+# Rust build output
+/rust/target/
