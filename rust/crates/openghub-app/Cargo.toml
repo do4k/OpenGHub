@@ -1,0 +1,9 @@
+[package]
+name = "openghub-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+openghub-core = { path = "../openghub-core" }
+rune = { git = "https://github.com/anomalyco/rune", rev = "65662d98c9d2a56d29a6189ee7156aca48c07db8" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
