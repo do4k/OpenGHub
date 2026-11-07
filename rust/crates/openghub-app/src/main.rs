@@ -1,7 +1,7 @@
 //! Open G Hub — a Logitech G HUB alternative. Rune UI, Rust port of the
 //! Avalonia `OpenGHub.App`. Talks to hardware through `openghub-core`.
 
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 
 use openghub_core::devices::{camera, headset, litra, mouse};
@@ -24,6 +24,9 @@ const ART_WEBCAM: &[u8] = include_bytes!("../assets/webcam.svg");
 static RT: LazyLock<tokio::runtime::Runtime> =
     LazyLock::new(|| tokio::runtime::Runtime::new().expect("tokio runtime"));
 
+/// The app handle, used by the Refresh button to trigger re-discovery.
+static HANDLE: OnceLock<rune::AppHandle<State>> = OnceLock::new();
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -34,6 +37,7 @@ struct State {
     selected: Option<usize>,
     images: Option<ImageCache>,
     preview_image: Option<Image>,
+    preview_pending: Option<Image>,
     preview_seq: u64,
 }
 
@@ -622,12 +626,32 @@ fn dashboard(s: &State, p: Paint, scale: f32) -> El {
         .px(space::S6)
         .py(space::S6)
         .child(
-            row().key("header").w_full().center_y().child(
-                text("Open G Hub")
-                    .key("title")
-                    .font(type_::TITLE)
-                    .color(t.text),
-            ),
+            row()
+                .key("header")
+                .w_full()
+                .center_y()
+                .justify_between()
+                .child(
+                    text("Open G Hub")
+                        .key("title")
+                        .font(type_::TITLE)
+                        .color(t.text),
+                )
+                .child(
+                    row()
+                        .key("refresh")
+                        .role("button")
+                        .label("Refresh")
+                        .h(28.0)
+                        .px(space::S3)
+                        .center()
+                        .radius(radius::MD)
+                        .fill(t.card)
+                        .border(1.0, t.card_border)
+                        .focusable(true)
+                        .on_press(|_s: &mut State| refresh())
+                        .child(text("Refresh").font(type_::LABEL).color(t.text)),
+                ),
         )
         .child(
             col()
@@ -1426,6 +1450,7 @@ fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
     let Some(i) = s.selected else {
         stop_camera_previews(s);
         s.preview_image = None;
+        s.preview_pending = None;
         return false;
     };
 
@@ -1443,6 +1468,7 @@ fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
 
     let Some(preview) = selected else {
         s.preview_image = None;
+        s.preview_pending = None;
         return false;
     };
 
@@ -1450,25 +1476,30 @@ fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
     tx.wake_after(Duration::from_millis(66));
     let _ = preview.start(PIX_FMT_YUYV);
 
-    let Some(frame) = preview.try_get_frame() else {
-        return false;
-    };
-    if frame.sequence == s.preview_seq {
-        return false;
+    // Promote a freshly-decoded frame only once it's ready, so the view never
+    // draws a pending (blank) image — the source of the flicker.
+    let promoted = s.preview_pending.as_ref().is_some_and(|im| im.is_ready());
+    if promoted {
+        s.preview_image = s.preview_pending.take();
     }
-    s.preview_seq = frame.sequence;
 
-    let Some(images) = &s.images else {
-        return false;
-    };
-    let image = if frame.is_jpeg {
-        images.load(frame.pixels)
-    } else {
-        let rgba = bgra_to_rgba(&frame.pixels);
-        images.rgba(frame.width as u32, frame.height as u32, rgba)
-    };
-    s.preview_image = Some(image);
-    true
+    // Read the latest frame into the pending slot.
+    if let Some(frame) = preview.try_get_frame()
+        && frame.sequence != s.preview_seq
+    {
+        s.preview_seq = frame.sequence;
+        if let Some(images) = &s.images {
+            let image = if frame.is_jpeg {
+                images.load(frame.pixels)
+            } else {
+                let rgba = bgra_to_rgba(&frame.pixels);
+                images.rgba(frame.width as u32, frame.height as u32, rgba)
+            };
+            s.preview_pending = Some(image);
+        }
+    }
+
+    promoted
 }
 
 fn main() {
@@ -1487,10 +1518,36 @@ fn main() {
 
     let app = rune::App::new(spec);
     let handle = app.handle();
+    let _ = HANDLE.set(handle.clone());
     RT.spawn(async move {
         let cards = discover().await;
         handle.update(move |s, _| s.cards = cards);
     });
 
     app.run();
+}
+
+/// Re-runs device discovery: clears the current cards (disposing their device
+/// handles) then re-discovers and installs the fresh set. This is how a device
+/// that was asleep at launch (e.g. the G Pro mouse) appears once it wakes.
+fn refresh() {
+    let Some(handle) = HANDLE.get().cloned() else {
+        return;
+    };
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let clear = handle.clone();
+    clear.update(move |s, _| {
+        s.cards.clear();
+        s.selected = None;
+        s.preview_image = None;
+        s.preview_pending = None;
+        let _ = tx.send(());
+    });
+    RT.spawn(async move {
+        // Wait for the clear to commit (old handles disposed) before opening
+        // new ones, so a receiver's responses aren't stolen by a stale reader.
+        let _ = rx.await;
+        let cards = discover().await;
+        handle.update(move |s, _| s.cards = cards);
+    });
 }
