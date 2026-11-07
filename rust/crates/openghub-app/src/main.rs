@@ -4,6 +4,7 @@
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 
+use openghub_core::config::{ConfigStore, DeviceState};
 use openghub_core::devices::{camera, headset, litra, mouse};
 use openghub_core::hid::HidBackend;
 use openghub_core::v4l2::PIX_FMT_YUYV;
@@ -27,6 +28,26 @@ static RT: LazyLock<tokio::runtime::Runtime> =
 /// The app handle, used by the Refresh button to trigger re-discovery.
 static HANDLE: OnceLock<rune::AppHandle<State>> = OnceLock::new();
 
+/// The persisted last-known device state, keyed by serial number.
+static STORE: LazyLock<Arc<ConfigStore>> = LazyLock::new(|| {
+    let path = ConfigStore::default_path();
+    match ConfigStore::open(&path) {
+        Ok(s) => Arc::new(s),
+        Err(e) => {
+            eprintln!("openghub: ignoring unreadable state file {path}: {e}");
+            Arc::new(ConfigStore::open("/tmp/openghub-state.json").expect("writable state"))
+        }
+    }
+});
+
+/// Read-modify-write one device's saved state.
+fn persist(serial: &str, mutate: impl FnOnce(&mut DeviceState)) {
+    let store = &*STORE;
+    let mut state = store.try_get(serial).unwrap_or_default();
+    mutate(&mut state);
+    let _ = store.set(serial, state);
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -45,6 +66,7 @@ struct Card {
     name: String,
     subtitle: String,
     status: String,
+    serial: String,
     art: &'static [u8],
     selected_section: usize,
     device: Device,
@@ -66,6 +88,18 @@ struct MouseUi {
     battery: Option<(i32, bool)>,
     rgb: [u8; 3],
     rgb_supported: bool,
+    cycle_supported: bool,
+    breathe_supported: bool,
+    effect: RgbEffect,
+}
+
+/// Which logo-LED effect is selected on the Lightsync page.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum RgbEffect {
+    #[default]
+    Static,
+    Cycle,
+    Breathe,
 }
 
 struct HeadsetUi {
@@ -223,28 +257,70 @@ fn litra_art(product_id: u16) -> &'static [u8] {
     }
 }
 
+const STAGE_PRESETS: [i32; 7] = [400, 800, 1600, 3200, 6400, 12800, 25600];
+
+fn default_stages(min: i32, max: i32) -> Vec<i32> {
+    let stages: Vec<i32> = STAGE_PRESETS
+        .into_iter()
+        .filter(|&v| v >= min && v <= max)
+        .collect();
+    if stages.len() >= 2 {
+        stages
+    } else {
+        vec![min, max]
+    }
+}
+
+fn sanitize_stages(input: Vec<i32>, min: i32, max: i32) -> Vec<i32> {
+    let mut output = Vec::new();
+    for v in input {
+        let clamped = v.clamp(min, max);
+        if !output.contains(&clamped) {
+            output.push(clamped);
+        }
+    }
+    output.sort_unstable();
+    if output.is_empty() {
+        default_stages(min, max)
+    } else {
+        output
+    }
+}
+
 fn litra_card(backend: &HidBackend, info: &openghub_core::hid::DeviceInfo) -> Card {
     let name = litra::LitraLight::friendly_name(info.product_id);
     let subtitle = format!("serial {}", info.serial.as_deref().unwrap_or("n/a"));
+    let serial = info.serial.clone().unwrap_or_default();
+    let saved = &STORE.try_get(&serial);
     match backend.open(info) {
         Ok(fd) => Card {
             name,
             subtitle,
+            serial,
             status: "ready".to_string(),
             art: litra_art(info.product_id),
             selected_section: 0,
             device: Device::Litra(
                 Arc::new(litra::LitraLight::new(fd)),
                 LitraUi {
-                    on: false,
-                    brightness: 60,
-                    temperature: 3200,
+                    on: saved.as_ref().is_some_and(|s| s.power),
+                    brightness: saved
+                        .as_ref()
+                        .map(|s| s.brightness)
+                        .filter(|&b| b > 0)
+                        .unwrap_or(60),
+                    temperature: saved
+                        .as_ref()
+                        .map(|s| s.temperature)
+                        .filter(|&t| t > 0)
+                        .unwrap_or(3200),
                 },
             ),
         },
         Err(e) => Card {
             name,
             subtitle,
+            serial,
             status: e.to_string(),
             art: litra_art(info.product_id),
             selected_section: 0,
@@ -261,8 +337,14 @@ async fn headset_card(
         return Ok(None);
     };
 
+    let serial = info
+        .serial
+        .clone()
+        .unwrap_or_else(|| format!("prox-{:04x}", info.product_id));
+    let saved = &STORE.try_get(&serial);
+
     let mut ui = HeadsetUi {
-        sidetone: 0,
+        sidetone: saved.as_ref().map(|s| s.sidetone).unwrap_or(0),
         noise_reduction: false,
         has_noise_reduction: false,
         eq: None,
@@ -284,6 +366,11 @@ async fn headset_card(
             && live.len() == freqs.len()
         {
             levels = live;
+        } else if let Some(s) = &saved
+            && let Some(lv) = &s.equalizer_levels
+            && lv.len() == freqs.len()
+        {
+            levels = lv.clone();
         }
         ui.eq = Some(EqUi {
             frequencies: freqs,
@@ -297,6 +384,7 @@ async fn headset_card(
     Ok(Some(Card {
         name: h.name().to_string(),
         subtitle: format!("serial {}", info.serial.as_deref().unwrap_or("n/a")),
+        serial,
         status: "ready".to_string(),
         art: ART_PROX,
         selected_section: 0,
@@ -312,31 +400,54 @@ async fn mouse_card(
         return Ok(None);
     };
 
-    let (min, max, _step) = m.dpi_range();
-    let mut stages: Vec<i32> = [400, 800, 1600, 3200, 6400, 12800, 25600]
-        .into_iter()
-        .filter(|&v| v >= min && v <= max)
-        .collect();
-    if stages.len() < 2 {
-        stages = vec![min, max];
-    }
+    let serial = m.serial().to_string();
+    let saved = &STORE.try_get(&serial);
 
-    let mut dpi = m.get_dpi().await.unwrap_or(stages[0]);
-    if !(min..=max).contains(&dpi) {
+    let (min, max, _step) = m.dpi_range();
+    let mut stages = sanitize_stages(
+        saved
+            .as_ref()
+            .and_then(|s| s.dpi_stages.clone())
+            .unwrap_or_default(),
+        min,
+        max,
+    );
+
+    let mut dpi = saved.as_ref().map(|s| s.dpi).unwrap_or(0);
+    if let Ok(live) = m.get_dpi().await {
+        dpi = live;
+    }
+    if dpi <= 0 {
         dpi = stages[0];
+    }
+    if (min..=max).contains(&dpi) && !stages.contains(&dpi) {
+        stages.push(dpi);
+        stages = sanitize_stages(stages, min, max);
     }
 
     let rate_options = m.report_rate_options().to_vec();
-    let rate = m
-        .get_report_rate()
-        .await
-        .unwrap_or_else(|_| *rate_options.first().unwrap_or(&1000));
+    let mut rate = saved
+        .as_ref()
+        .and_then(|s| (s.report_rate > 0).then_some(s.report_rate))
+        .or_else(|| rate_options.first().copied())
+        .unwrap_or(1000);
+    if let Ok(live) = m.get_report_rate().await {
+        rate = live;
+    }
+
     let rgb_supported = m.rgb_supported();
+    let rgb = match &saved {
+        Some(s) if s.red as u32 + s.green as u32 + s.blue as u32 > 0 => [s.red, s.green, s.blue],
+        _ => [0xff, 0xff, 0xff],
+    };
     let battery = m.get_battery().await.ok();
+    let cycle_supported = rgb_supported && m.has_cycle();
+    let breathe_supported = rgb_supported && m.has_breathe();
 
     Ok(Some(Card {
         name: m.name().to_string(),
         subtitle: format!("serial {}", m.serial()),
+        serial,
         status: "ready".to_string(),
         art: ART_GPRO,
         selected_section: 0,
@@ -348,8 +459,11 @@ async fn mouse_card(
                 rate_options,
                 rate,
                 battery,
-                rgb: [0xff, 0xff, 0xff],
+                rgb,
                 rgb_supported,
+                cycle_supported,
+                breathe_supported,
+                effect: RgbEffect::Static,
             },
         ),
     }))
@@ -377,6 +491,7 @@ fn camera_card(c: camera::V4l2Camera) -> Card {
     Card {
         name: c.name().to_string(),
         subtitle,
+        serial: c.serial().to_string(),
         status: "ready".to_string(),
         art: ART_WEBCAM,
         selected_section: 0,
@@ -919,11 +1034,17 @@ fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) -> El {
                     &stage.to_string(),
                     active,
                     move |s: &mut State| {
+                        let serial = s.cards[i].serial.clone();
                         let (m, ui) = s.cards[i].mouse_mut();
                         ui.dpi = stage;
+                        let stages = ui.stages.clone();
                         let m = m.clone();
                         RT.spawn(async move {
                             let _ = m.set_dpi(stage).await;
+                        });
+                        persist(&serial, |st| {
+                            st.dpi = stage;
+                            st.dpi_stages = Some(stages);
                         });
                     },
                 ));
@@ -959,12 +1080,14 @@ fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) -> El {
                         &rate.to_string(),
                         active,
                         move |s: &mut State| {
+                            let serial = s.cards[i].serial.clone();
                             let (m, ui) = s.cards[i].mouse_mut();
                             ui.rate = rate;
                             let m = m.clone();
                             RT.spawn(async move {
                                 let _ = m.set_report_rate(rate).await;
                             });
+                            persist(&serial, |st| st.report_rate = rate);
                         },
                     ));
                 }
@@ -987,15 +1110,62 @@ fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) -> El {
                 b: srgb(b),
                 a: 1.0,
             };
-            col()
-                .key("lighting")
-                .gap(space::S2)
-                .child(text("LIGHTSYNC").key("title").font(type_::SECTION).color(t.text))
-                .child(el().key("swatch").size(64.0, 40.0).radius(6.0).fill(swatch))
-                .child(rgb_row(p, "red", "Red", r as f32, 0, i))
-                .child(rgb_row(p, "green", "Green", g as f32, 1, i))
-                .child(rgb_row(p, "blue", "Blue", b as f32, 2, i))
-                .child(text("Logo LED, static color. The hardware has no read-back, so the sliders seed from the last state Open G Hub sent.").key("note").font(type_::LABEL).color(t.text_secondary).wrap())
+            let mut c = col().key("lighting").gap(space::S2);
+            c = c.child(
+                text("LIGHTSYNC")
+                    .key("title")
+                    .font(type_::SECTION)
+                    .color(t.text),
+            );
+            let mut effects = row().key("effects").gap(space::S2).flex_wrap();
+            effects = effects.child(pill(
+                p,
+                "effect-static",
+                "Static",
+                ui.effect == RgbEffect::Static,
+                move |s: &mut State| apply_rgb_effect(s, i, RgbEffect::Static),
+            ));
+            if ui.cycle_supported {
+                effects = effects.child(pill(
+                    p,
+                    "effect-cycle",
+                    "Cycle",
+                    ui.effect == RgbEffect::Cycle,
+                    move |s: &mut State| apply_rgb_effect(s, i, RgbEffect::Cycle),
+                ));
+            }
+            if ui.breathe_supported {
+                effects = effects.child(pill(
+                    p,
+                    "effect-breathe",
+                    "Breathing",
+                    ui.effect == RgbEffect::Breathe,
+                    move |s: &mut State| apply_rgb_effect(s, i, RgbEffect::Breathe),
+                ));
+            }
+            c = c.child(effects);
+            c = c.child(el().key("swatch").size(64.0, 40.0).radius(6.0).fill(swatch));
+            if ui.effect == RgbEffect::Cycle {
+                c = c.child(
+                    text("Cycle sweeps the full spectrum; it has no per-color control.")
+                        .key("note")
+                        .font(type_::LABEL)
+                        .color(t.text_secondary)
+                        .wrap(),
+                );
+            } else {
+                c = c.child(rgb_row(p, "red", "Red", r as f32, 0, i));
+                c = c.child(rgb_row(p, "green", "Green", g as f32, 1, i));
+                c = c.child(rgb_row(p, "blue", "Blue", b as f32, 2, i));
+            }
+            c = c.child(
+                text("The hardware has no color read-back, so the color seeds from the last state Open G Hub sent.")
+                    .key("note2")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary)
+                    .wrap(),
+            );
+            c
         }
     }
 }
@@ -1019,15 +1189,40 @@ fn rgb_row(
         1.0,
         format!("{value:.0}"),
         move |s: &mut State, v| {
+            let serial = s.cards[card].serial.clone();
             let (m, ui) = s.cards[card].mouse_mut();
             ui.rgb[channel] = v as u8;
             let m = m.clone();
             let (r, g, b) = (ui.rgb[0], ui.rgb[1], ui.rgb[2]);
+            let effect = ui.effect;
             RT.spawn(async move {
-                let _ = m.set_color(r, g, b).await;
+                let _ = match effect {
+                    RgbEffect::Static => m.set_color(r, g, b).await,
+                    RgbEffect::Breathe => m.set_breathe(r, g, b).await,
+                    RgbEffect::Cycle => m.set_cycle().await,
+                };
+            });
+            persist(&serial, |st| {
+                st.red = r;
+                st.green = g;
+                st.blue = b;
             });
         },
     )
+}
+
+fn apply_rgb_effect(s: &mut State, card: usize, effect: RgbEffect) {
+    let (m, ui) = s.cards[card].mouse_mut();
+    ui.effect = effect;
+    let m = m.clone();
+    let (r, g, b) = (ui.rgb[0], ui.rgb[1], ui.rgb[2]);
+    RT.spawn(async move {
+        let _ = match effect {
+            RgbEffect::Static => m.set_color(r, g, b).await,
+            RgbEffect::Breathe => m.set_breathe(r, g, b).await,
+            RgbEffect::Cycle => m.set_cycle().await,
+        };
+    });
 }
 
 fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint) -> El {
@@ -1052,12 +1247,14 @@ fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint) -> El {
                 1.0,
                 format!("{sidetone:.0}%"),
                 move |s: &mut State, v| {
+                    let serial = s.cards[i].serial.clone();
                     let (h, ui) = s.cards[i].headset_mut();
                     ui.sidetone = v as i32;
                     let h = h.clone();
                     RT.spawn(async move {
                         let _ = h.set_sidetone(v as i32).await;
                     });
+                    persist(&serial, |st| st.sidetone = v as i32);
                 },
             ));
             if ui.has_noise_reduction {
@@ -1152,14 +1349,17 @@ fn band_row(p: Paint, card: usize, band: usize, label: &str, value: f32, min: f3
         1.0,
         format!("{value:+.0} dB"),
         move |s: &mut State, v| {
+            let serial = s.cards[card].serial.clone();
             let (h, ui) = s.cards[card].headset_mut();
             if let Some(eq) = &mut ui.eq {
                 eq.levels[band] = v as i32;
                 let levels = eq.levels.clone();
+                let saved = levels.clone();
                 let h = h.clone();
                 RT.spawn(async move {
                     let _ = h.set_eq_levels(&levels).await;
                 });
+                persist(&serial, |st| st.equalizer_levels = Some(saved));
             }
         },
     )
@@ -1172,10 +1372,12 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
             let mut c = col().key("lighting").gap(space::S3);
             let on = ui.on;
             c = c.child(toggle_row(p, "power", "Power", on, move |s: &mut State| {
+                let serial = s.cards[i].serial.clone();
                 let (l, ui) = s.cards[i].litra_mut();
                 ui.on = !ui.on;
                 let on = ui.on;
                 let _ = l.set_power(on);
+                persist(&serial, |st| st.power = on);
             }));
             let brightness = ui.brightness as f32;
             c = c.child(
@@ -1195,9 +1397,11 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
                 1.0,
                 format!("{brightness:.0}%"),
                 move |s: &mut State, v| {
+                    let serial = s.cards[i].serial.clone();
                     let (l, ui) = s.cards[i].litra_mut();
                     ui.brightness = v as i32;
                     let _ = l.set_brightness(v as i32);
+                    persist(&serial, |st| st.brightness = v as i32);
                 },
             ));
             let temperature = ui.temperature as f32;
@@ -1218,16 +1422,23 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
                 100.0,
                 format!("{temperature:.0} K"),
                 move |s: &mut State, v| {
+                    let serial = s.cards[i].serial.clone();
                     let (l, ui) = s.cards[i].litra_mut();
                     ui.temperature = v as i32;
                     let _ = l.set_temperature(v as i32);
+                    persist(&serial, |st| st.temperature = v as i32);
                 },
             ));
             c
         }
         _ => {
             let mut c = col().key("presets").gap(space::S2);
-            c = c.child(text("Presets").key("title").font(type_::SECTION).color(t.text));
+            c = c.child(
+                text("Presets")
+                    .key("title")
+                    .font(type_::SECTION)
+                    .color(t.text),
+            );
             c = c.child(
                 text("One-tap temperature/brightness combinations. The light can't report state back, so each preset writes its full target.")
                     .key("note")
@@ -1235,16 +1446,38 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
                     .color(t.text_secondary)
                     .wrap(),
             );
-            let mut pills = row().key("preset-pills").gap(space::S2).flex_wrap().pt(space::S2);
-            pills = pills.child(pill(p, "preset-reading", "Reading", false, move |s: &mut State| {
-                apply_litra_preset(s, i, true, 50, 2700);
-            }));
-            pills = pills.child(pill(p, "preset-working", "Working", false, move |s: &mut State| {
-                apply_litra_preset(s, i, true, 80, 4000);
-            }));
-            pills = pills.child(pill(p, "preset-daylight", "Daylight", false, move |s: &mut State| {
-                apply_litra_preset(s, i, true, 100, 6500);
-            }));
+            let mut pills = row()
+                .key("preset-pills")
+                .gap(space::S2)
+                .flex_wrap()
+                .pt(space::S2);
+            pills = pills.child(pill(
+                p,
+                "preset-reading",
+                "Reading",
+                false,
+                move |s: &mut State| {
+                    apply_litra_preset(s, i, true, 50, 2700);
+                },
+            ));
+            pills = pills.child(pill(
+                p,
+                "preset-working",
+                "Working",
+                false,
+                move |s: &mut State| {
+                    apply_litra_preset(s, i, true, 80, 4000);
+                },
+            ));
+            pills = pills.child(pill(
+                p,
+                "preset-daylight",
+                "Daylight",
+                false,
+                move |s: &mut State| {
+                    apply_litra_preset(s, i, true, 100, 6500);
+                },
+            ));
             pills = pills.child(pill(p, "preset-off", "Off", false, move |s: &mut State| {
                 apply_litra_preset(s, i, false, 0, 0);
             }));
@@ -1257,6 +1490,7 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
 /// Applies a Litra lighting preset (writes power + brightness + temperature and
 /// mirrors the values back into the card's state so the Lighting page follows).
 fn apply_litra_preset(s: &mut State, i: usize, on: bool, brightness: i32, temperature: i32) {
+    let serial = s.cards[i].serial.clone();
     let (l, ui) = s.cards[i].litra_mut();
     if on {
         ui.on = true;
@@ -1269,6 +1503,12 @@ fn apply_litra_preset(s: &mut State, i: usize, on: bool, brightness: i32, temper
         ui.on = false;
         let _ = l.set_power(false);
     }
+    let (on, b, t) = (ui.on, ui.brightness, ui.temperature);
+    persist(&serial, |st| {
+        st.power = on;
+        st.brightness = b;
+        st.temperature = t;
+    });
 }
 
 fn camera_content(
@@ -1428,6 +1668,7 @@ fn demo_litra() -> Card {
     Card {
         name: "Litra Glow".to_string(),
         subtitle: "serial DEMO0001".to_string(),
+        serial: "DEMO0001".to_string(),
         status: "ready".to_string(),
         art: ART_LITRA_GLOW,
         selected_section: 0,

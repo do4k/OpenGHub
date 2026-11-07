@@ -78,6 +78,11 @@ const LED_FUNC_SET_CONTROL: u8 = 0x80;
 
 const LED_ZONE_LOCATION_LOGO: u16 = 0x02;
 const LED_EFFECT_ID_STATIC: u16 = 0x01;
+const LED_EFFECT_ID_CYCLE: u16 = 0x03;
+const LED_EFFECT_ID_BREATHE: u16 = 0x0a;
+
+/// Sentinel for an effect-slot index the logo zone doesn't expose.
+const LED_NO_EFFECT: u8 = 0xff;
 
 // REPROG_CONTROLS_V4 (0x1b04).
 const BUTTONS_FUNC_GET_COUNT: u8 = 0x00;
@@ -157,6 +162,8 @@ pub struct GProMouse {
     led_feature_index: u8,
     led_zone_index: u8,
     led_static_effect_index: u8,
+    led_cycle_effect_index: u8,
+    led_breathe_effect_index: u8,
 
     buttons_feature_index: u8,
 }
@@ -339,32 +346,88 @@ impl GProMouse {
         self.led_feature_index != 0
     }
 
+    /// Whether the Logo LED exposes a color-cycle effect.
+    pub fn has_cycle(&self) -> bool {
+        self.led_cycle_effect_index != LED_NO_EFFECT
+    }
+
+    /// Whether the Logo LED exposes a breathing effect.
+    pub fn has_breathe(&self) -> bool {
+        self.led_breathe_effect_index != LED_NO_EFFECT
+    }
+
     /// Sets the Logo LED to a static color.
     pub async fn set_color(&self, r: u8, g: u8, b: u8) -> Result<(), Error> {
+        self.ensure_rgb()?;
+        let mut params = [0u8; 10];
+        params[0] = r;
+        params[1] = g;
+        params[2] = b;
+        params[3] = 0x00; // ramp: Default
+        self.set_zone_effect(self.led_static_effect_index, &params)
+            .await
+    }
+
+    /// Sets the Logo LED to a spectrum color cycle.
+    pub async fn set_cycle(&self) -> Result<(), Error> {
+        self.ensure_rgb()?;
+        if self.led_cycle_effect_index == LED_NO_EFFECT {
+            return Err(Error::invalid_operation(format!(
+                "gpro: {} has no Cycle LED effect",
+                self.name
+            )));
+        }
+        // Cycle: [unused x5, period:2 BE ms, intensity, unused x2].
+        let mut params = [0u8; 10];
+        params[5] = 0x13;
+        params[6] = 0x88; // period 5000 ms
+        params[7] = 0x64; // intensity 100
+        self.set_zone_effect(self.led_cycle_effect_index, &params)
+            .await
+    }
+
+    /// Sets the Logo LED to a breathing pulse of the given color.
+    pub async fn set_breathe(&self, r: u8, g: u8, b: u8) -> Result<(), Error> {
+        self.ensure_rgb()?;
+        if self.led_breathe_effect_index == LED_NO_EFFECT {
+            return Err(Error::invalid_operation(format!(
+                "gpro: {} has no Breathe LED effect",
+                self.name
+            )));
+        }
+        // Breathe: [color x3, period:2 BE ms, form, intensity, unused x3].
+        let mut params = [0u8; 10];
+        params[0] = r;
+        params[1] = g;
+        params[2] = b;
+        params[3] = 0x13;
+        params[4] = 0x88; // period 5000 ms
+        params[5] = 0x00; // form: default waveform
+        params[6] = 0x64; // intensity 100
+        self.set_zone_effect(self.led_breathe_effect_index, &params)
+            .await
+    }
+
+    fn ensure_rgb(&self) -> Result<(), Error> {
         if self.led_feature_index == 0 {
             return Err(Error::invalid_operation(format!(
                 "gpro: {} has no RGB lighting",
                 self.name
             )));
         }
-        claim_led_control(&self.conn, self.device_index, self.led_feature_index).await?;
+        Ok(())
+    }
 
-        // zoneIndex, effectListIndex, then a 10-byte effect parameter block
-        // (color R,G,B, ramp, and 6 zero-padding bytes for the Static effect).
-        let payload = [
-            self.led_zone_index,
-            self.led_static_effect_index,
-            r,
-            g,
-            b,
-            0x00, // ramp: Default
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-        ];
+    /// Writes one effect into the logo zone: [zoneIndex, effectListIndex,
+    /// 10-byte effect parameter block]. The device persists RAM-only (the
+    /// persistence byte is left zero = volatile), so a host color is always
+    /// driven on demand.
+    async fn set_zone_effect(&self, effect_index: u8, params: &[u8; 10]) -> Result<(), Error> {
+        claim_led_control(&self.conn, self.device_index, self.led_feature_index).await?;
+        let mut payload = [0u8; 12];
+        payload[0] = self.led_zone_index;
+        payload[1] = effect_index;
+        payload[2..12].copy_from_slice(params);
         self.conn
             .call(
                 self.device_index,
@@ -678,12 +741,15 @@ async fn build(
     let led_idx = root::get_feature_index(&conn, device_index, FEATURE_COLOR_LED_EFFECTS)
         .await?
         .unwrap_or(0);
-    let (mut led_idx, mut led_zone_idx, mut led_static_effect_idx) = (led_idx, 0, 0);
+    let (mut led_idx, mut led_zone_idx, mut led_static_idx, mut led_cycle_idx, mut led_breathe_idx) =
+        (led_idx, 0, 0, LED_NO_EFFECT, LED_NO_EFFECT);
     if led_idx != 0 {
         match discover_logo_zone(&conn, device_index, led_idx).await {
-            Ok((zone, effect)) => {
-                led_zone_idx = zone;
-                led_static_effect_idx = effect;
+            Ok(effects) => {
+                led_zone_idx = effects.zone_index;
+                led_static_idx = effects.static_index;
+                led_cycle_idx = effects.cycle_index;
+                led_breathe_idx = effects.breathe_index;
             }
             Err(_) => led_idx = 0,
         }
@@ -720,7 +786,9 @@ async fn build(
         report_rate_options: rate_options,
         led_feature_index: led_idx,
         led_zone_index: led_zone_idx,
-        led_static_effect_index: led_static_effect_idx,
+        led_static_effect_index: led_static_idx,
+        led_cycle_effect_index: led_cycle_idx,
+        led_breathe_effect_index: led_breathe_idx,
         buttons_feature_index: buttons_idx,
     })
 }
@@ -943,12 +1011,24 @@ async fn get_extended_report_rate_options(
     Ok(options)
 }
 
-/// Locates the mouse's Logo LED zone and its "Static" effect slot.
+/// The Logo LED zone and the effect-slot indices it exposes. Slot indices use
+/// [`LED_NO_EFFECT`] as their "absent" sentinel.
+#[derive(Clone, Copy)]
+struct LedEffects {
+    zone_index: u8,
+    static_index: u8,
+    cycle_index: u8,
+    breathe_index: u8,
+}
+
+/// Locates the mouse's Logo LED zone and its effect slots (Static, Cycle,
+/// Breathe). The Static slot is required; Cycle/Breathe are optional and
+/// resolve to [`LED_NO_EFFECT`] when the firmware doesn't expose them.
 async fn discover_logo_zone(
     conn: &HidppConn,
     device_index: u8,
     feature_index: u8,
-) -> Result<(u8, u8), Error> {
+) -> Result<LedEffects, Error> {
     let info = conn
         .call(device_index, feature_index, LED_FUNC_GET_INFO, &[])
         .await?;
@@ -975,6 +1055,12 @@ async fn discover_logo_zone(
         }
         let effect_count = zi[3];
 
+        let mut effects = LedEffects {
+            zone_index: zone,
+            static_index: LED_NO_EFFECT,
+            cycle_index: LED_NO_EFFECT,
+            breathe_index: LED_NO_EFFECT,
+        };
         for e in 0..effect_count {
             let ei = conn
                 .call(
@@ -990,13 +1076,19 @@ async fn discover_logo_zone(
                 ));
             }
             let effect_id = ((ei[2] as u16) << 8) | ei[3] as u16;
-            if effect_id == LED_EFFECT_ID_STATIC {
-                return Ok((zone, e));
+            match effect_id {
+                LED_EFFECT_ID_STATIC => effects.static_index = e,
+                LED_EFFECT_ID_CYCLE => effects.cycle_index = e,
+                LED_EFFECT_ID_BREATHE => effects.breathe_index = e,
+                _ => {}
             }
         }
-        return Err(Error::invalid_operation(
-            "gpro: Logo LED zone has no Static effect",
-        ));
+        if effects.static_index == LED_NO_EFFECT {
+            return Err(Error::invalid_operation(
+                "gpro: Logo LED zone has no Static effect",
+            ));
+        }
+        return Ok(effects);
     }
     Err(Error::invalid_operation("gpro: no Logo LED zone found"))
 }
