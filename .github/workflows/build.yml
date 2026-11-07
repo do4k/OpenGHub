@@ -11,20 +11,25 @@ permissions:
   contents: write # the release job attaches artifacts to a GitHub Release on tags
 
 env:
-  DOTNET_VERSION: "10.0.x"
+  RUST_VERSION: "1.99.1"
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Build the whole solution (Core + App + PoC probe).
+  # Build and test the whole workspace (Core + App + PoC probe).
   # ---------------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - run: dotnet build OpenGHub.slnx
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy, rustfmt
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev
+      - run: cargo build --all-targets
+      - run: cargo test
+      - run: cargo clippy --all-targets
 
   # ---------------------------------------------------------------------------
   # Version string shared by all build jobs: the tag without its leading "v",
@@ -42,16 +47,15 @@ jobs:
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
             # For non-tag builds, use date-based version: YY.MM.dd.HHmm.
-            # Leading zeros are stripped so every numeric prerelease segment
-            # stays valid SemVer — .NET 10 restore silently fails (MSB4181,
-            # no logged error) on e.g. "0.0.0-26.08.17-2243".
+            # Leading zeros are stripped so the numeric segments stay valid
+            # for the .deb package version.
             adate=$(date -u +'%y.%m.%d.%H%M' | sed -E 's/\b0+([0-9])/\1/g')
             echo "version=0.0.0-${adate}" >> "$GITHUB_OUTPUT"
           fi
 
   # ---------------------------------------------------------------------------
-  # Linux: the trimmed single-file binary (the same output `make publish`
-  # produces locally) plus a .deb (built with nfpm).
+  # Linux: the release binary (the same output `make publish` produces
+  # locally) plus a .deb (built with nfpm).
   # ---------------------------------------------------------------------------
   build-linux:
     needs: [test, version]
@@ -60,13 +64,16 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: Publish single-file binary
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev
+      - name: Build release binary
         run: |
-          dotnet publish src/OpenGHub.App -p:PublishProfile=linux-x64 -o bin
-          mv bin/OpenGHub.App bin/openghub
+          cargo build --release -p openghub-app
+          mkdir -p bin
+          cp target/release/openghub-app bin/openghub
       - name: Package tarball
         run: |
           mkdir -p dist
@@ -82,7 +89,7 @@ jobs:
           path: dist/*
 
   # ---------------------------------------------------------------------------
-  # Windows: a self-contained single-file GUI .exe, zipped up.
+  # Windows: the release GUI .exe, zipped up.
   # ---------------------------------------------------------------------------
   build-windows:
     needs: [test, version]
@@ -91,28 +98,25 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: Publish
-        shell: bash
-        run: |
-          dotnet publish src/OpenGHub.App -c Release -r win-x64 \
-            -p:PublishSingleFile=true -p:SelfContained=true \
-            -p:IncludeNativeLibrariesForSelfExtract=true \
-            -p:PublishTrimmed=true -p:TrimMode=partial -o dist
-          mv dist/OpenGHub.App.exe dist/openghub.exe
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Build release binary
+        run: cargo build --release -p openghub-app
       - name: Package zip
         shell: pwsh
-        run: Compress-Archive -Path dist/openghub.exe -DestinationPath "dist/openghub_${env:VERSION}_windows_amd64.zip"
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/openghub-app.exe dist/openghub.exe
+          Compress-Archive -Path dist/openghub.exe -DestinationPath "dist/openghub_${env:VERSION}_windows_amd64.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: openghub-windows
           path: dist/*.zip
 
   # ---------------------------------------------------------------------------
-  # macOS: a .app bundle (Info.plist + generated .icns) around the published
-  # arm64 binary, zipped with ditto. Unsigned — see the README note about
+  # macOS: a .app bundle (Info.plist + generated .icns) around the release
+  # binary, zipped with ditto. Unsigned — see the README note about
   # Gatekeeper on first launch.
   # ---------------------------------------------------------------------------
   build-macos:
@@ -122,21 +126,16 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: Publish
-        run: |
-          dotnet publish src/OpenGHub.App -c Release -r osx-arm64 \
-            -p:PublishSingleFile=true -p:SelfContained=true \
-            -p:IncludeNativeLibrariesForSelfExtract=true \
-            -p:PublishTrimmed=true -p:TrimMode=partial -o bundle
-          mv bundle/OpenGHub.App openghub
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Build release binary
+        run: cargo build --release -p openghub-app
       - name: Assemble .app bundle
         run: |
           APP="OpenGHub.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp openghub "$APP/Contents/MacOS/openghub"
+          cp target/release/openghub-app "$APP/Contents/MacOS/openghub"
           sed "s/__VERSION__/${VERSION}/g" packaging/macos/Info.plist.template > "$APP/Contents/Info.plist"
 
           # Build an .icns from the 512px Icon.png (sizes up to 512).

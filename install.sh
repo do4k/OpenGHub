@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds and installs Open G Hub for Linux: single-file binary to ~/.local/bin,
+# Builds and installs Open G Hub for Linux: release binary to ~/.local/bin,
 # desktop entry, and the udev HID rule.
 set -euo pipefail
 
@@ -8,18 +8,18 @@ cd "$REPO_ROOT"
 
 echo "==> Open G Hub installer"
 
-# Check for the .NET SDK (10.0 or newer).
-if ! command -v dotnet >/dev/null 2>&1; then
-	echo "==> .NET SDK not found."
-	echo "    Install the .NET 10 SDK from https://dotnet.microsoft.com/download"
-	echo "    or via your distribution's packages, then re-run this script."
+# Check for the Rust toolchain (1.99 or newer, pinned in rust-toolchain.toml).
+if ! command -v cargo >/dev/null 2>&1; then
+	echo "==> Rust toolchain not found."
+	echo "    Install Rust from https://rustup.rs, then re-run this script."
 	exit 1
 fi
-echo "==> Using $(dotnet --version)"
+echo "==> Using $(rustc --version)"
 
-echo "==> Publishing the single-file binary (takes a while)..."
-dotnet publish src/OpenGHub.App -p:PublishProfile=linux-x64 -o bin
-mv bin/OpenGHub.App bin/openghub
+echo "==> Building the release binary (takes a while)..."
+cargo build --release -p openghub-app
+mkdir -p bin
+cp target/release/openghub-app bin/openghub
 
 echo "==> Installing..."
 make install

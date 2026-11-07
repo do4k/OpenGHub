@@ -1,56 +1,43 @@
 # Open G Hub
 
 A native GUI for controlling Logitech devices — the Logitech G HUB
-equivalent, built for Linux first. Implemented as a .NET/Avalonia
-application. It also builds and runs on Windows and macOS (with a
-device-support caveat — see [Prebuilt packages](#prebuilt-packages)).
+equivalent, built for Linux first. Implemented in Rust, with a native
+GPU-rendered UI built on [Rune](https://github.com/anomalyco/rune).
 
 On Linux, Open G Hub talks to hardware directly over the `hidraw` interface
 and to webcams through V4L2 — no `libhidapi`, no `libv4l`, no cgo — so
-installation needs nothing beyond the published single-file binary.
+installation needs nothing beyond the published binary (plus a Vulkan
+driver to render).
 
 ## Status
 
 - **Litra Glow / Litra Beam** key lights — power, brightness, color
-  temperature.
+  temperature, and one-tap presets. State is write-only over USB, so it is
+  remembered in `~/.config/openghub/state.json` and re-seeded on launch.
 - **G Pro Wireless, PRO X Superlight, and PRO X Superlight 2** mice
-  (direct or via a Lightspeed receiver) — DPI and report (polling) rate,
-  logo color on units that have one (the Superlight family doesn't),
-  battery, and button remapping on units whose firmware exposes the
-  corresponding HID++ feature. Newer mice report DPI and report rate
-  through different HID++ features than the G Pro Wireless does (up to
-  8000 Hz, with DPI ranges read from the device); Open G Hub uses whichever
-  the connected mouse implements. **Caveat:** the Superlight-family
-  support is implemented from a third-party reference implementation's
-  protocol decoding and from the G Pro Wireless's own hardware, not yet
-  verified against physical Superlight hardware.
+  (direct or via a Lightspeed receiver) — DPI stages and report (polling)
+  rate, logo color (Static/Cycle/Breathing effects on units that expose
+  them), and battery. Newer mice report DPI and report rate through
+  different HID++ features than the G Pro Wireless does (up to 8000 Hz);
+  Open G Hub uses whichever the connected mouse implements.
+  **Caveat:** Superlight support is decoded from third-party protocol
+  references and the G Pro Wireless's own hardware, not yet verified
+  against physical Superlight units; the Cycle/Breathing effect writes are
+  likewise unverified against powered hardware.
 - **PRO X Wireless Gaming Headset** — battery, sidetone, a full per-band
-  equalizer (band count/frequencies/dB range are read from the device),
-  and a hardware mic noise-reduction toggle on units whose firmware
-  supports it (probed with a read; the toggle hides otherwise).
-- **C920 / C920 HD Pro / C922 Pro Stream / C930e** webcams — zoom,
-  pan/tilt position, autofocus and manual focus, auto and manual
-  exposure, image tuning (brightness, contrast, saturation, sharpness),
-  and a **live preview** streamed straight off the capture node. Webcams
-  aren't HID devices, so these go through a pure .NET V4L2 layer rather
-  than hidraw; which controls exist is queried from the driver per
-  device. The preview negotiates MJPEG (YUYV fallback) and renders a
-  640×480 feed at ~15 fps.
+  equalizer (band count/frequencies/dB range read from the device), and a
+  hardware mic noise-reduction toggle on units whose firmware supports it.
+- **C920 / C920 HD Pro / C922 Pro Stream / C930e** webcams — zoom, pan/tilt,
+  autofocus and manual focus, auto and manual exposure, image tuning, and a
+  **live preview** streamed straight off the capture node at ~15 fps.
 
-The UI is styled after Logitech's own G HUB, navigation included: the
-**Dashboard** — a near-black home screen with a cyan-blue accent — shows
-every connected device as a clickable card (product render, name, battery
-level if it has one, a settings button); clicking one opens that device's
-page, and the back arrow in the page's top-left returns to the Dashboard.
-A device's page only exists while it's actually connected. Device pages
-are laid out like G HUB's: an icon rail on the left groups each device's
-settings into sections — Sensitivity (DPI, report rate), Assignments
-(button remapping), Lighting (power, temperature, RGB logo color), Sound
-(sidetone, mic noise reduction, equalizer), Video/Camera/Image for
-webcams — and only the sections a device actually supports appear. DPI is
-presented as G HUB's **DPI stages**: a row of preset buttons with a *DPI
-Speeds* track plotting each stage. The webcam page carries a live
-preview above the Camera and Image tabs.
+The UI is styled after Logitech's own G HUB: the **Dashboard** shows every
+connected device as a card (SVG render, name, battery); clicking one opens
+that device's page with a left icon rail grouping settings into sections
+(Sensitivity, Assignments, Lightsync, Acoustics, EQ, Camera/Image, …). Only
+the sections a device supports appear. Button remapping (`REPROG_CONTROLS`)
+stays a stub on the receiver-connected G Pro Wireless — that firmware
+exposes no `0x1b04` feature, and the uinput emission layer isn't wired up.
 
 ## Quick start
 
@@ -60,157 +47,88 @@ cd OpenGHub
 ./install.sh
 ```
 
-`install.sh` will, on Debian/Ubuntu-based distros (including Linux Mint):
+`install.sh` builds the release binary, installs it to
+`~/.local/bin/openghub` with a desktop launcher entry, and drops a udev rule
+granting access to supported `hidraw` nodes. Then **unplug and replug your
+device** so the rule applies.
 
-1. Check for the .NET 10 SDK and tell you how to get it if it's missing.
-2. Publish the trimmed single-file binary.
-3. Install it to `~/.local/bin/openghub`, a desktop launcher entry, and a
-   udev rule granting your user access to supported devices' `hidraw`
-   nodes and `/dev/uinput` (used only for button remapping when it lands).
+### Building from source
 
-After installing, **unplug and replug your device** so the new udev rule
-applies, then launch Open G Hub from your application menu or run
-`~/.local/bin/openghub`.
+Prerequisites: Rust **1.99.1** (pinned in `rust-toolchain.toml`), a Vulkan
+driver (any ICD, including software `lavapipe`), and `libxkbcommon`
+(Rune links `-lxkbcommon`):
 
-To remove everything `install.sh` set up, run `./uninstall.sh`.
+```sh
+sudo apt install libxkbcommon-dev   # Debian/Ubuntu
+cargo build                          # build the workspace
+cargo run -p openghub-app            # launch the UI
+cargo run -p openghub-poc -- --help  # console hardware probe
+```
+
+If you can't install the `-dev` package, point the linker at the runtime
+library instead:
+
+```sh
+mkdir -p ~/.local/lib
+ln -s /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0 ~/.local/lib/libxkbcommon.so
+export LIBRARY_PATH="$HOME/.local/lib"
+```
 
 ### Prebuilt packages
 
-Every push builds installable packages for all three platforms in CI (see
-`.github/workflows/build.yml`), and tagging a release (`vX.Y.Z`) attaches
-them to a GitHub Release:
+Every push builds packages for all three platforms in CI (see
+`.github/workflows/build.yml`), and tagging `vX.Y.Z` attaches them to a
+GitHub Release: a Debian `.deb` (+ tarball), a zipped Windows `.exe`, and a
+zipped unsigned macOS `.app`.
 
-- **Debian/Ubuntu** — a `.deb` (`sudo apt install ./openghub_*_amd64.deb`),
-  which drops the binary in `/usr/bin`, installs the udev rule and desktop
-  entry, and reloads udev for you. A plain binary tarball is also built.
-- **Windows** — a zipped `openghub.exe`.
-- **macOS** — a zipped `OpenGHub.app`. It's unsigned, so the first launch
-  needs a right-click → **Open** to get past Gatekeeper.
-
-> **Platform support caveat.** Open G Hub was built for Linux, where device
-> support is complete and hardware-tested. It also **builds and runs** on
-> Windows and macOS — the full G HUB-style UI comes up — but those builds
-> ship a HID backend that finds no devices yet (hidraw is Linux-only;
-> the enumeration simply returns nothing elsewhere). Webcam control stays
-> Linux-only regardless, since it uses V4L2.
-
-## Usage
-
-Open G Hub polls for supported devices every few seconds. Each connected
-device gets its own page, opened from its Dashboard card (and gone once
-the device unplugs), with whichever controls it supports — a power
-checkbox, sliders, dropdowns, a color picker. Changes are applied
-immediately.
-
-Devices that can't report their own state back over USB (Litra lights;
-the G Pro Wireless's DPI/report-rate/battery/color often *can* be read
-back live and are) fall back to the last value Open G Hub sent, kept in
-`$XDG_CONFIG_HOME/openghub/state.json` (typically
-`~/.config/openghub/state.json`). Most settings are only ever *applied*
-when you interact with them.
-
-### Custom product images
-
-Each supported product ships with an original render drawn for Open G Hub
-(Logitech's own product photography is copyrighted, so an MIT-licensed
-project can't redistribute it). If you'd rather see the official images,
-you can supply your own: drop a file into
-`$XDG_CONFIG_HOME/openghub/images/` (typically `~/.config/openghub/images/`)
-named after the product — lowercased, spaces as dashes — with a `.png`,
-`.jpg`, `.jpeg`, or `.svg` extension, e.g. `g-pro-wireless.png`,
-`litra-glow.png`, or `pro-x-wireless-gaming-headset.png`. Open G Hub picks
-these up at startup and uses them everywhere the built-in render would
-appear. Such images are for your own local use; don't commit them to a
-public fork.
-
-### Button remapping
-
-If the mouse's firmware exposes the `REPROG_CONTROLS` feature (0x1B00
-through 0x1B04) — not universal; see [Status](#status) — its remappable
-buttons each get a dropdown to retarget them to another mouse button or a
-keyboard key, or restore "Default". If the feature isn't present, this
-section just doesn't appear; the rest of the mouse's controls are
-unaffected. The software-side emission layer (uinput) that makes remaps
-work while the app runs is still to be wired up, so on the current
-hardware this page carries the G HUB-spec enumeration as a stub.
+> **Platform support caveat.** Open G Hub is built and hardware-tested for
+> Linux, where device support is complete. It also builds on Windows and
+> macOS, but those builds ship a HID backend that finds no devices yet
+> (`hidraw` is Linux-only); webcam control stays Linux-only regardless.
 
 ## Architecture
 
 ```
-src/OpenGHub.Core/         Hardware library: hidraw I/O, HID++ transport,
-                            device drivers, V4L2 controls + capture
-src/OpenGHub.Core/Hid/     Linux hidraw backend: /sys/class/hidraw discovery
-                            + /dev/hidrawN I/O
-src/OpenGHub.Core/Hidpp/   HID++ 2.0 transport: feature calls, notifications,
-                            shared battery logic, device self-naming
-src/OpenGHub.Core/Devices/ Device drivers: Litra / GProMouse / Prox / V4l2Camera
-                            (each a sealed class owning its hidraw node or
-                            /dev/videoN) + WebcamPreview streaming loop
-src/OpenGHub.Core/V4l2/    Pure .NET V4L2 ioctls (controls + format/buffer/
-                            stream), struct layouts from the kernel ABI
-src/OpenGHub.Core/Config/  JSON-backed last-known-state store
-src/OpenGHub.App/          Avalonia GUI: dashboard, device pages, section
-                            rail, webcam preview, debounced slider writes
-src/OpenGHub.Poc/          Console probe for hardware iteration
-packaging/                nfpm .deb config, Debian postinstall, macOS plist
-install/                  udev rules and .desktop launcher entry
-.github/workflows/        CI: build + per-OS publishes (.deb, .exe, .app)
+crates/openghub-core/         Hardware library: hidraw I/O, HID++ transport,
+                               device drivers, V4L2 controls + capture
+crates/openghub-core/src/hid/  Linux hidraw backend (sysfs discovery + /dev/hidrawN)
+crates/openghub-core/src/hidpp/ HID++ 2.0 transport: feature calls, notifications,
+                               battery/name helpers
+crates/openghub-core/src/devices/ Drivers: Litra / GProMouse / Prox / V4l2Camera
+                               + WebcamPreview streaming loop
+crates/openghub-core/src/v4l2/ Raw V4L2 ioctls (controls + format/buffer/stream)
+crates/openghub-core/src/config/ JSON-backed last-known-state store
+crates/openghub-app/          Rune GUI: dashboard, device pages, section rail,
+                               live webcam preview, hardware bridge
+crates/openghub-poc/          Console probe for hardware iteration
+packaging/                    nfpm .deb config, Debian postinstall, macOS plist
+install/                      udev rules and .desktop launcher entry
+.github/workflows/            CI: build + per-OS publishes (.deb, .exe, .app)
 ```
 
-**Structure.** `OpenGHub.Core` is pure .NET (BCL + P/Invoke only): each
-supported product is a sealed driver class opening its own `hidraw`
-node (or a `/dev/videoN` node for webcams, discovered via
-`/sys/class/video4linux`). The HID++ transport (feature discovery via the
-Root feature, request/response matching, unsolicited notifications) lives
-once in `Hidpp/`, and both the mouse and headset drivers call into it;
-battery support is likewise shared (`HidppBattery.cs`). The GUI never
-references a specific product — it type-asserts each discovered device
-against the capability surface and renders whatever applies. Sliders and
-other hardware writes are debounced (see `DeviceCardViewModel`); reads
-tolerate asleep devices and surface that via card `Status` rather than
-exceptions. The webcam's live preview runs a V4L2 mmap ring in Core
-(`WebcamPreview`) and renders into a WriteableBitmap in the App
-(`CameraPreviewViewModel`), with both MJPEG and YUYV paths verified on
-hardware.
-
-## Development
-
-```bash
-dotnet build                          # build the solution
-make build                            # alias for the above
-make publish                          # single-file binary -> bin/openghub
-make run                              # build and run the app
-dotnet run --project src/OpenGHub.Poc  # probe hardware (see AGENTS.md)
-```
-
-A console probe (`src/OpenGHub.Poc`) exercises every hardware path without
-the GUI: enumerate HID devices, read/write DPI, RGB, sidetone, EQ bands,
-camera controls, and stream preview frames (`--preview`,
-`--preview-yuyv`).
+**Structure.** `openghub-core` is raw `libc`/`nix` syscalls only: each
+supported product is a driver opening its own `hidraw` node (or a
+`/dev/videoN` node, discovered via `/sys/class/video4linux`). The HID++
+transport lives once in `hidpp/` (a `poll`-gated reader thread matching
+request/response by software id, plus a notifications channel), and both the
+mouse and headset drivers call into it. The Rune app bridges async HID++
+calls to Rune's synchronous view loop through a background tokio runtime and
+`AppHandle::update`.
 
 ## Credit
 
-All product artwork in Open G Hub (the dashboard renders and generic device
-icons) is original, drawn for this project; none of it is Logitech's
-imagery. "Logitech", "G HUB", and the product names are Logitech
-trademarks, used here only to identify the hardware being controlled.
+All product artwork is original, drawn for this project. "Logitech",
+"G HUB", and product names are Logitech trademarks, used only to identify the
+hardware being controlled.
 
-The Litra USB protocol was originally reverse-engineered by
-[kharyam/go-litra-driver](https://github.com/kharyam/go-litra-driver) (and
-its Python predecessor, [kharyam/litra-driver](https://github.com/kharyam/litra-driver)).
-Open G Hub's Litra driver is an independent implementation of that protocol,
-built on its own pure-BCL hidraw backend rather than `libhidapi`.
+The Litra USB protocol was reverse-engineered by
+[kharyam/go-litra-driver](https://github.com/kharyam/go-litra-driver). HID++
+2.0 byte layouts were verified against
+[pwr-Solaar/Solaar](https://github.com/pwr-Solaar/Solaar) and
+[AprilNEA/OpenLogi](https://github.com/AprilNEA/OpenLogi).
 
-HID++ 2.0 feature byte layouts used by the G Pro Wireless driver were
-verified against [pwr-Solaar/Solaar](https://github.com/pwr-Solaar/Solaar),
-the most complete existing Linux HID++ implementation, rather than guessed
-from general protocol documentation. The Superlight family's extended DPI
-(`0x2202`) and report rate (`0x8061`) features were cross-referenced
-against [AprilNEA/OpenLogi](https://github.com/AprilNEA/OpenLogi)
-(MIT/Apache-2.0), an independently written Rust HID++ implementation.
-
-Open G Hub itself was previously implemented in Go; the current .NET codebase
-replaced it entirely, and its V4L2/HID++ constants and quirks still follow
+Open G Hub was previously implemented in Go, then in .NET/Avalonia; this Rust
+codebase replaces both, and its V4L2/HID++ constants and quirks still follow
 that verified lineage where noted in the code.
 
 ## License

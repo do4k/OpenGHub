@@ -1,9 +1,5 @@
-# .NET build output
-src/**/bin/
-src/**/obj/
-*.user
-.vs/
-.idea/
+# Rust build output
+/target/
 
 # Published/installed artifacts
 /bin/
@@ -20,6 +16,3 @@ src/**/obj/
 # Stray tooling that shouldn't live in the repo
 /lazygit
 /lazygit.tar.gz
-
-# Rust build output
-/rust/target/
