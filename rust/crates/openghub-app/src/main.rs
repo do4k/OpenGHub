@@ -207,6 +207,11 @@ async fn discover() -> Vec<Card> {
         }
     }
 
+    eprintln!("openghub: discovered {} device(s)", cards.len());
+    for card in &cards {
+        eprintln!("openghub:   - {} ({})", card.name, card.subtitle);
+    }
+
     cards
 }
 
@@ -1220,12 +1225,49 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
             ));
             c
         }
-        _ => stub_content(
-            p,
-            "Presets",
-            "One-tap presets for the Litra light.",
-            &["Video Call", "Soft White", "Warm"],
-        ),
+        _ => {
+            let mut c = col().key("presets").gap(space::S2);
+            c = c.child(text("Presets").key("title").font(type_::SECTION).color(t.text));
+            c = c.child(
+                text("One-tap temperature/brightness combinations. The light can't report state back, so each preset writes its full target.")
+                    .key("note")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary)
+                    .wrap(),
+            );
+            let mut pills = row().key("preset-pills").gap(space::S2).flex_wrap().pt(space::S2);
+            pills = pills.child(pill(p, "preset-reading", "Reading", false, move |s: &mut State| {
+                apply_litra_preset(s, i, true, 50, 2700);
+            }));
+            pills = pills.child(pill(p, "preset-working", "Working", false, move |s: &mut State| {
+                apply_litra_preset(s, i, true, 80, 4000);
+            }));
+            pills = pills.child(pill(p, "preset-daylight", "Daylight", false, move |s: &mut State| {
+                apply_litra_preset(s, i, true, 100, 6500);
+            }));
+            pills = pills.child(pill(p, "preset-off", "Off", false, move |s: &mut State| {
+                apply_litra_preset(s, i, false, 0, 0);
+            }));
+            c = c.child(pills);
+            c
+        }
+    }
+}
+
+/// Applies a Litra lighting preset (writes power + brightness + temperature and
+/// mirrors the values back into the card's state so the Lighting page follows).
+fn apply_litra_preset(s: &mut State, i: usize, on: bool, brightness: i32, temperature: i32) {
+    let (l, ui) = s.cards[i].litra_mut();
+    if on {
+        ui.on = true;
+        ui.brightness = brightness;
+        ui.temperature = temperature;
+        let _ = l.set_power(true);
+        let _ = l.set_brightness(brightness);
+        let _ = l.set_temperature(temperature);
+    } else {
+        ui.on = false;
+        let _ = l.set_power(false);
     }
 }
 
