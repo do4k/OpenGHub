@@ -8,12 +8,18 @@
 //! webcam drivers) and `config` (persisted last-known state).
 
 pub mod config;
-pub mod devices;
 pub mod error;
+
+#[cfg(unix)]
+pub mod devices;
+#[cfg(unix)]
 pub mod hid;
+#[cfg(unix)]
 pub mod hidpp;
+#[cfg(unix)]
 pub mod v4l2;
 
+#[cfg(unix)]
 mod sys;
 
 pub use error::{Error, HidppError};

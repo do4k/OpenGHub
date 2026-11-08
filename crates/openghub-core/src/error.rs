@@ -60,6 +60,7 @@ impl Error {
     }
 }
 
+#[cfg(unix)]
 impl From<nix::errno::Errno> for Error {
     fn from(e: nix::errno::Errno) -> Self {
         Error::Io(io::Error::from(e))

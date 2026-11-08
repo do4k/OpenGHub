@@ -1,6 +1,10 @@
 # Rust build output
 /target/
 
+# IDE files
+.idea/
+.vs/
+
 # Published/installed artifacts
 /bin/
 /dist/

@@ -1,34 +1,49 @@
 //! Open G Hub — a Logitech G HUB alternative. Rune UI, Rust port of the
 //! Avalonia `OpenGHub.App`. Talks to hardware through `openghub-core`.
 
+#[cfg(unix)]
 use std::sync::{Arc, LazyLock, OnceLock};
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use openghub_core::config::{ConfigStore, DeviceState};
+#[cfg(unix)]
 use openghub_core::devices::{camera, headset, litra, mouse};
+#[cfg(unix)]
 use openghub_core::hid::HidBackend;
+#[cfg(unix)]
 use openghub_core::v4l2::PIX_FMT_YUYV;
 
 use rune::tok::{self, motion, radius, space, type_};
 use rune::{
-    Align, AppSpec, Color, Cx, Drag, El, Image, ImageCache, Key, KeyEvent, Phase, ScrollSpec,
-    SurfaceFit, Tx, col, el, row, text,
+    Align, AppSpec, Color, Cx, Drag, El, ImageCache, Key, KeyEvent, Phase, Tx, col, el, row, text,
 };
+#[cfg(unix)]
+use rune::{Image, ScrollSpec, SurfaceFit};
 
+#[cfg(unix)]
 const ART_GPRO: &[u8] = include_bytes!("../assets/gpro.svg");
+#[cfg(unix)]
 const ART_PROX: &[u8] = include_bytes!("../assets/prox.svg");
+#[cfg(unix)]
 const ART_LITRA_GLOW: &[u8] = include_bytes!("../assets/litra-glow.svg");
+#[cfg(unix)]
 const ART_LITRA_BEAM: &[u8] = include_bytes!("../assets/litra-beam.svg");
+#[cfg(unix)]
 const ART_WEBCAM: &[u8] = include_bytes!("../assets/webcam.svg");
 
 /// One shared tokio runtime for async HID++ calls (mouse/headset) and discovery.
+#[cfg(unix)]
 static RT: LazyLock<tokio::runtime::Runtime> =
     LazyLock::new(|| tokio::runtime::Runtime::new().expect("tokio runtime"));
 
 /// The app handle, used by the Refresh button to trigger re-discovery.
+#[cfg(unix)]
 static HANDLE: OnceLock<rune::AppHandle<State>> = OnceLock::new();
 
 /// The persisted last-known device state, keyed by serial number.
+#[cfg(unix)]
 static STORE: LazyLock<Arc<ConfigStore>> = LazyLock::new(|| {
     let path = ConfigStore::default_path();
     match ConfigStore::open(&path) {
@@ -41,6 +56,7 @@ static STORE: LazyLock<Arc<ConfigStore>> = LazyLock::new(|| {
 });
 
 /// Read-modify-write one device's saved state.
+#[cfg(unix)]
 fn persist(serial: &str, mutate: impl FnOnce(&mut DeviceState)) {
     let store = &*STORE;
     let mut state = store.try_get(serial).unwrap_or_default();
@@ -54,14 +70,20 @@ fn persist(serial: &str, mutate: impl FnOnce(&mut DeviceState)) {
 
 #[derive(Default)]
 struct State {
+    #[cfg(unix)]
     cards: Vec<Card>,
+    #[cfg(unix)]
     selected: Option<usize>,
     images: Option<ImageCache>,
+    #[cfg(unix)]
     preview_image: Option<Image>,
+    #[cfg(unix)]
     preview_pending: Option<Image>,
+    #[cfg(unix)]
     preview_seq: u64,
 }
 
+#[cfg(unix)]
 struct Card {
     name: String,
     subtitle: String,
@@ -72,6 +94,7 @@ struct Card {
     device: Device,
 }
 
+#[cfg(unix)]
 enum Device {
     Mouse(Arc<mouse::GProMouse>, MouseUi),
     Headset(Arc<headset::ProxHeadset>, HeadsetUi),
@@ -80,6 +103,7 @@ enum Device {
     Error(String),
 }
 
+#[cfg(unix)]
 struct MouseUi {
     dpi: i32,
     stages: Vec<i32>,
@@ -94,6 +118,7 @@ struct MouseUi {
 }
 
 /// Which logo-LED effect is selected on the Lightsync page.
+#[cfg(unix)]
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum RgbEffect {
     #[default]
@@ -102,6 +127,7 @@ enum RgbEffect {
     Breathe,
 }
 
+#[cfg(unix)]
 struct HeadsetUi {
     sidetone: i32,
     noise_reduction: bool,
@@ -110,6 +136,7 @@ struct HeadsetUi {
     battery: Option<(i32, bool)>,
 }
 
+#[cfg(unix)]
 struct EqUi {
     frequencies: Vec<i32>,
     min_db: i32,
@@ -117,17 +144,20 @@ struct EqUi {
     levels: Vec<i32>,
 }
 
+#[cfg(unix)]
 struct LitraUi {
     on: bool,
     brightness: i32,
     temperature: i32,
 }
 
+#[cfg(unix)]
 struct CameraUi {
     controls: Vec<CamControl>,
     preview: Arc<camera::WebcamPreview>,
 }
 
+#[cfg(unix)]
 struct CamControl {
     name: String,
     min: i32,
@@ -137,6 +167,7 @@ struct CamControl {
     is_bool: bool,
 }
 
+#[cfg(unix)]
 impl Card {
     fn mouse_mut(&mut self) -> (&Arc<mouse::GProMouse>, &mut MouseUi) {
         match &mut self.device {
@@ -187,6 +218,7 @@ impl Card {
 }
 
 /// The G HUB-style section rail for a card: (title, glyph) pairs.
+#[cfg(unix)]
 fn sections(card: &Card) -> Vec<(&'static str, &'static str)> {
     match &card.device {
         Device::Mouse(_, ui) => {
@@ -209,6 +241,7 @@ fn sections(card: &Card) -> Vec<(&'static str, &'static str)> {
     }
 }
 
+#[cfg(unix)]
 fn display_name(name: &str) -> String {
     name.to_uppercase()
 }
@@ -217,6 +250,7 @@ fn display_name(name: &str) -> String {
 // Discovery (async, run once on a background task)
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 async fn discover() -> Vec<Card> {
     let backend = HidBackend;
     let mut cards = Vec::new();
@@ -249,6 +283,7 @@ async fn discover() -> Vec<Card> {
     cards
 }
 
+#[cfg(unix)]
 fn litra_art(product_id: u16) -> &'static [u8] {
     if product_id == litra::PRODUCT_BEAM {
         ART_LITRA_BEAM
@@ -257,8 +292,10 @@ fn litra_art(product_id: u16) -> &'static [u8] {
     }
 }
 
+#[cfg(unix)]
 const STAGE_PRESETS: [i32; 7] = [400, 800, 1600, 3200, 6400, 12800, 25600];
 
+#[cfg(unix)]
 fn default_stages(min: i32, max: i32) -> Vec<i32> {
     let stages: Vec<i32> = STAGE_PRESETS
         .into_iter()
@@ -271,6 +308,7 @@ fn default_stages(min: i32, max: i32) -> Vec<i32> {
     }
 }
 
+#[cfg(unix)]
 fn sanitize_stages(input: Vec<i32>, min: i32, max: i32) -> Vec<i32> {
     let mut output = Vec::new();
     for v in input {
@@ -287,6 +325,7 @@ fn sanitize_stages(input: Vec<i32>, min: i32, max: i32) -> Vec<i32> {
     }
 }
 
+#[cfg(unix)]
 fn litra_card(backend: &HidBackend, info: &openghub_core::hid::DeviceInfo) -> Card {
     let name = litra::LitraLight::friendly_name(info.product_id);
     let subtitle = format!("serial {}", info.serial.as_deref().unwrap_or("n/a"));
@@ -329,6 +368,7 @@ fn litra_card(backend: &HidBackend, info: &openghub_core::hid::DeviceInfo) -> Ca
     }
 }
 
+#[cfg(unix)]
 async fn headset_card(
     backend: &HidBackend,
     info: &openghub_core::hid::DeviceInfo,
@@ -392,6 +432,7 @@ async fn headset_card(
     }))
 }
 
+#[cfg(unix)]
 async fn mouse_card(
     backend: &HidBackend,
     info: &openghub_core::hid::DeviceInfo,
@@ -469,6 +510,7 @@ async fn mouse_card(
     }))
 }
 
+#[cfg(unix)]
 fn camera_card(c: camera::V4l2Camera) -> Card {
     let subtitle = format!("serial {} · {}", c.serial(), c.device_path());
     let controls: Vec<CamControl> = c
@@ -511,6 +553,7 @@ struct Paint {
 
 /// A horizontal slider in value space, with a numeric readout to its right.
 #[allow(clippy::too_many_arguments)]
+#[cfg(unix)]
 fn slider(
     p: Paint,
     key: impl Into<String>,
@@ -608,6 +651,7 @@ fn slider(
         )
 }
 
+#[cfg(unix)]
 fn toggle_row(
     p: Paint,
     key: impl Into<String>,
@@ -647,6 +691,7 @@ fn toggle_row(
         )
 }
 
+#[cfg(unix)]
 fn pill(
     p: Paint,
     key: impl Into<String>,
@@ -673,6 +718,7 @@ fn pill(
         )
 }
 
+#[cfg(unix)]
 fn chip(p: Paint, key: impl Into<String>, label: &str) -> El {
     el().key(key)
         .h(26.0)
@@ -685,6 +731,7 @@ fn chip(p: Paint, key: impl Into<String>, label: &str) -> El {
 
 /// A slider with a left-aligned name label (RGB channels, EQ bands).
 #[allow(clippy::too_many_arguments)]
+#[cfg(unix)]
 fn labeled_slider(
     p: Paint,
     key: impl Into<String>,
@@ -726,10 +773,11 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
         accent: accent(dark),
     };
     let scale = cx.env().scale;
-    match s.selected {
-        Some(i) => device_page(s, i, p),
-        None => dashboard(s, p, scale),
+    #[cfg(unix)]
+    if let Some(i) = s.selected {
+        return device_page(s, i, p);
     }
+    dashboard(s, p, scale)
 }
 
 fn accent(_dark: bool) -> Color {
@@ -745,49 +793,66 @@ fn dashboard(s: &State, p: Paint, scale: f32) -> El {
         .fill(t.bg)
         .px(space::S6)
         .py(space::S6)
-        .child(
-            row()
-                .key("header")
-                .w_full()
-                .center_y()
-                .justify_between()
-                .child(
-                    text("Open G Hub")
-                        .key("title")
-                        .font(type_::TITLE)
-                        .color(t.text),
-                )
-                .child(
-                    row()
-                        .key("refresh")
-                        .role("button")
-                        .label("Refresh")
-                        .h(28.0)
-                        .px(space::S3)
-                        .center()
-                        .radius(radius::MD)
-                        .fill(t.card)
-                        .border(1.0, t.card_border)
-                        .focusable(true)
-                        .on_press(|_s: &mut State| refresh())
-                        .child(text("Refresh").font(type_::LABEL).color(t.text)),
-                ),
-        )
+        .child(header_row(t))
         .child(
             col()
                 .key("grid")
                 .grow(1.0)
                 .pt(space::S3)
-                .child(if s.cards.is_empty() {
-                    empty_state(p)
-                } else {
-                    let mut r = row().key("cards").gap(space::S3).flex_wrap();
-                    for (i, card) in s.cards.iter().enumerate() {
-                        r = r.child(card_tile(p, i, card, s.images.as_ref(), scale));
-                    }
-                    r
-                }),
+                .child(cards_grid(s, p, scale)),
         )
+}
+
+fn header_row(t: tok::Theme) -> El {
+    let row = row()
+        .key("header")
+        .w_full()
+        .center_y()
+        .justify_between()
+        .child(
+            text("Open G Hub")
+                .key("title")
+                .font(type_::TITLE)
+                .color(t.text),
+        );
+    #[cfg(unix)]
+    let row = row.child(refresh_button(t));
+    row
+}
+
+#[cfg(unix)]
+fn refresh_button(t: tok::Theme) -> El {
+    row()
+        .key("refresh")
+        .role("button")
+        .label("Refresh")
+        .h(28.0)
+        .px(space::S3)
+        .center()
+        .radius(radius::MD)
+        .fill(t.card)
+        .border(1.0, t.card_border)
+        .focusable(true)
+        .on_press(|_s: &mut State| refresh())
+        .child(text("Refresh").font(type_::LABEL).color(t.text))
+}
+
+#[cfg(unix)]
+fn cards_grid(s: &State, p: Paint, scale: f32) -> El {
+    if s.cards.is_empty() {
+        empty_state(p)
+    } else {
+        let mut r = row().key("cards").gap(space::S3).flex_wrap();
+        for (i, card) in s.cards.iter().enumerate() {
+            r = r.child(card_tile(p, i, card, s.images.as_ref(), scale));
+        }
+        r
+    }
+}
+
+#[cfg(not(unix))]
+fn cards_grid(_s: &State, p: Paint, _scale: f32) -> El {
+    empty_state(p)
 }
 
 fn empty_state(p: Paint) -> El {
@@ -805,6 +870,7 @@ fn empty_state(p: Paint) -> El {
         )
 }
 
+#[cfg(unix)]
 fn card_tile(p: Paint, i: usize, card: &Card, images: Option<&ImageCache>, scale: f32) -> El {
     let t = p.t;
     let name = display_name(&card.name);
@@ -872,6 +938,7 @@ fn card_tile(p: Paint, i: usize, card: &Card, images: Option<&ImageCache>, scale
         )
 }
 
+#[cfg(unix)]
 fn device_page(s: &State, i: usize, p: Paint) -> El {
     let t = p.t;
     let card = &s.cards[i];
@@ -951,6 +1018,7 @@ fn device_page(s: &State, i: usize, p: Paint) -> El {
         )
 }
 
+#[cfg(unix)]
 fn section_rail(s: &State, i: usize, p: Paint, secs: &[(&'static str, &'static str)]) -> El {
     let t = p.t;
     let mut rail = col().key("rail").gap(2.0);
@@ -992,6 +1060,7 @@ fn section_rail(s: &State, i: usize, p: Paint, secs: &[(&'static str, &'static s
     rail
 }
 
+#[cfg(unix)]
 fn device_content(s: &State, i: usize, p: Paint) -> El {
     let card = &s.cards[i];
     let section = card.selected_section;
@@ -1014,6 +1083,7 @@ fn device_content(s: &State, i: usize, p: Paint) -> El {
 // Device section content
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) -> El {
     match section {
         0 => {
@@ -1170,6 +1240,7 @@ fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) -> El {
     }
 }
 
+#[cfg(unix)]
 fn rgb_row(
     p: Paint,
     key: &'static str,
@@ -1211,6 +1282,7 @@ fn rgb_row(
     )
 }
 
+#[cfg(unix)]
 fn apply_rgb_effect(s: &mut State, card: usize, effect: RgbEffect) {
     let (m, ui) = s.cards[card].mouse_mut();
     ui.effect = effect;
@@ -1225,6 +1297,7 @@ fn apply_rgb_effect(s: &mut State, card: usize, effect: RgbEffect) {
     });
 }
 
+#[cfg(unix)]
 fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint) -> El {
     let t = p.t;
     match section {
@@ -1337,6 +1410,7 @@ fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint) -> El {
     }
 }
 
+#[cfg(unix)]
 fn band_row(p: Paint, card: usize, band: usize, label: &str, value: f32, min: f32, max: f32) -> El {
     labeled_slider(
         p,
@@ -1365,6 +1439,7 @@ fn band_row(p: Paint, card: usize, band: usize, label: &str, value: f32, min: f3
     )
 }
 
+#[cfg(unix)]
 fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
     let t = p.t;
     match section {
@@ -1489,6 +1564,7 @@ fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) -> El {
 
 /// Applies a Litra lighting preset (writes power + brightness + temperature and
 /// mirrors the values back into the card's state so the Lighting page follows).
+#[cfg(unix)]
 fn apply_litra_preset(s: &mut State, i: usize, on: bool, brightness: i32, temperature: i32) {
     let serial = s.cards[i].serial.clone();
     let (l, ui) = s.cards[i].litra_mut();
@@ -1511,6 +1587,7 @@ fn apply_litra_preset(s: &mut State, i: usize, on: bool, brightness: i32, temper
     });
 }
 
+#[cfg(unix)]
 fn camera_content(
     i: usize,
     ui: &CameraUi,
@@ -1618,6 +1695,7 @@ fn camera_content(
     c
 }
 
+#[cfg(unix)]
 fn stub_content(p: Paint, title: &str, note: &str, items: &[&str]) -> El {
     let t = p.t;
     let mut c = col().key("stub").gap(space::S3);
@@ -1637,10 +1715,12 @@ fn stub_content(p: Paint, title: &str, note: &str, items: &[&str]) -> El {
     c
 }
 
+#[cfg(unix)]
 fn srgb(v: u8) -> f32 {
     rune::color::srgb_decode(v as f32 / 255.0)
 }
 
+#[cfg(unix)]
 fn freq_label(hz: i32) -> String {
     if hz >= 1000 {
         format!("{} kHz", hz as f32 / 1000.0)
@@ -1653,6 +1733,7 @@ fn freq_label(hz: i32) -> String {
 // main
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn on_key(s: &mut State, ev: &KeyEvent, _: &mut Tx) -> bool {
     if ev.key == Key::Escape {
         s.selected = None;
@@ -1661,8 +1742,14 @@ fn on_key(s: &mut State, ev: &KeyEvent, _: &mut Tx) -> bool {
     false
 }
 
+#[cfg(not(unix))]
+fn on_key(_s: &mut State, _ev: &KeyEvent, _tx: &mut Tx) -> bool {
+    false
+}
+
 /// A Litra card backed by `/dev/null` (writes are no-ops), so the demo scene can
 /// show the full control surface without hardware.
+#[cfg(unix)]
 fn demo_litra() -> Card {
     let fd: std::os::fd::OwnedFd = std::fs::File::open("/dev/null").expect("/dev/null").into();
     Card {
@@ -1683,6 +1770,7 @@ fn demo_litra() -> Card {
     }
 }
 
+#[cfg(unix)]
 fn demo_cards() -> Vec<Card> {
     let mut cards = vec![demo_litra()];
     if let Some(node) = camera::V4l2Camera::enumerate_nodes().into_iter().find(|n| {
@@ -1696,21 +1784,25 @@ fn demo_cards() -> Vec<Card> {
     cards
 }
 
+#[cfg(unix)]
 fn demo_state(s: &mut State) {
     s.cards = demo_cards();
     s.selected = Some(0);
 }
 
+#[cfg(unix)]
 fn demo_camera_state(s: &mut State) {
     s.cards = demo_cards();
     s.selected = Some(s.cards.len().saturating_sub(1));
 }
 
+#[cfg(unix)]
 fn demo_dash_state(s: &mut State) {
     s.cards = demo_cards();
     s.selected = None;
 }
 
+#[cfg(unix)]
 fn stop_camera_previews(s: &State) {
     for card in &s.cards {
         if let Device::Camera(_, ui) = &card.device {
@@ -1719,6 +1811,7 @@ fn stop_camera_previews(s: &State) {
     }
 }
 
+#[cfg(unix)]
 fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
     let mut rgba = bgra.to_vec();
     for px in rgba.as_chunks_mut::<4>().0 {
@@ -1729,6 +1822,7 @@ fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
 
 /// Drives the live webcam preview: starts the selected camera's stream and
 /// publishes each new frame as an [`Image`] for the view to draw.
+#[cfg(unix)]
 fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
     let Some(i) = s.selected else {
         stop_camera_previews(s);
@@ -1786,7 +1880,24 @@ fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
 }
 
 fn main() {
-    let spec = AppSpec::<State> {
+    let app = rune::App::new(app_spec());
+
+    #[cfg(unix)]
+    {
+        let handle = app.handle();
+        let _ = HANDLE.set(handle.clone());
+        RT.spawn(async move {
+            let cards = discover().await;
+            handle.update(move |s, _| s.cards = cards);
+        });
+    }
+
+    app.run();
+}
+
+#[cfg(unix)]
+fn app_spec() -> AppSpec<State> {
+    AppSpec {
         min_size: Some((760.0, 480.0)),
         scenes: &[
             ("demo", demo_state),
@@ -1797,22 +1908,23 @@ fn main() {
         poll: Some(poll),
         on_key: Some(on_key),
         ..AppSpec::new("Open G Hub", (1000.0, 700.0), State::default, view)
-    };
+    }
+}
 
-    let app = rune::App::new(spec);
-    let handle = app.handle();
-    let _ = HANDLE.set(handle.clone());
-    RT.spawn(async move {
-        let cards = discover().await;
-        handle.update(move |s, _| s.cards = cards);
-    });
-
-    app.run();
+#[cfg(not(unix))]
+fn app_spec() -> AppSpec<State> {
+    AppSpec {
+        min_size: Some((760.0, 480.0)),
+        setup: Some(|s, waker| s.images = Some(ImageCache::new(waker))),
+        on_key: Some(on_key),
+        ..AppSpec::new("Open G Hub", (1000.0, 700.0), State::default, view)
+    }
 }
 
 /// Re-runs device discovery: clears the current cards (disposing their device
 /// handles) then re-discovers and installs the fresh set. This is how a device
 /// that was asleep at launch (e.g. the G Pro mouse) appears once it wakes.
+#[cfg(unix)]
 fn refresh() {
     let Some(handle) = HANDLE.get().cloned() else {
         return;
