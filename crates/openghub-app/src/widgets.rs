@@ -270,13 +270,78 @@ pub(crate) fn dpi_track(
     let on_activate = Arc::new(on_activate);
     let on_change = Arc::new(on_change);
 
-    let mut track = el().key(key.clone()).size(w, h).child(
-        el().key(format!("{key}/bar"))
-            .size(w, 3.0)
-            .absolute(0.0, bar_y)
-            .radius(1.5)
-            .fill(p.t.control_off),
-    );
+    // The dots are visual only; the drag handler lives on the full-width
+    // track root — `Drag::x` is in the *handler element's* coordinates, so a
+    // handler on the 12px dot would report x ≈ 0..12 and slam every drag to
+    // the track minimum (k/2, exactly like `slider` does).
+    let xs: Vec<f32> = stages.iter().map(|&v| x_of(v)).collect();
+    let fracs: Vec<f32> = stages.iter().map(|&v| frac_of(v)).collect();
+    let activate = Arc::clone(&on_activate);
+    let change = Arc::clone(&on_change);
+
+    let mut track = el()
+        .key(key.clone())
+        .role("slider")
+        .label("DPI speeds")
+        .focusable(true)
+        .motion(motion::SNAPPY)
+        .range_value(f64::from(active), f64::from(min_dpi), f64::from(max_dpi))
+        .range_step(f64::from(step))
+        .size(w, h)
+        .on_drag(move |s: &mut State, d: &mut Drag, tx| match d.phase {
+            Phase::Down => {
+                // Grab the nearest dot within reach. `data` encodes
+                // (index, frac-at-down) as `index * 2 + frac`; -1 = nothing.
+                let mut best: Option<usize> = None;
+                let mut best_dist = f32::INFINITY;
+                for (i, &sx) in xs.iter().enumerate() {
+                    let dist = (d.x - (sx + k / 2.0)).abs();
+                    if dist < best_dist {
+                        best_dist = dist;
+                        best = Some(i);
+                    }
+                }
+                match best.filter(|_| best_dist <= k / 2.0 + 8.0) {
+                    Some(i) => {
+                        d.data = i as f32 * 2.0 + fracs[i];
+                        activate(s, i);
+                    }
+                    None => d.data = -1.0,
+                }
+            }
+            Phase::Move => {
+                if d.data < 0.0 {
+                    return;
+                }
+                let i = (d.data / 2.0) as usize;
+                let frac = d.data - 2.0 * i as f32;
+                let knob_x = k / 2.0 + frac * travel;
+                let grab = if (d.start_x - knob_x).abs() <= k / 2.0 + 2.0 {
+                    d.start_x - knob_x
+                } else {
+                    0.0
+                };
+                change(s, i, v_of(d.x - grab));
+                tx.instant();
+            }
+            Phase::Up => {
+                if d.cancelled() && d.data >= 0.0 {
+                    // Restore the speed as it was when the drag began.
+                    let i = (d.data / 2.0) as usize;
+                    let frac = d.data - 2.0 * i as f32;
+                    let v = (lo * (hi / lo).powf(frac)).round();
+                    let snapped = ((v - lo) / step as f32).round() * step as f32 + lo;
+                    change(s, i, (snapped as i32).clamp(min_dpi, max_dpi));
+                }
+            }
+        })
+        .child(
+            el().key(format!("{key}/bar"))
+                .size(w, 3.0)
+                .absolute(0.0, bar_y)
+                .radius(1.5)
+                .fill(p.t.control_off),
+        );
 
     // Tick marks + labels at G HUB-style milestones.
     for v in [100, 1000, 2000, 3000, 4000, 14800, 25600] {
@@ -338,45 +403,13 @@ pub(crate) fn dpi_track(
             );
         }
 
-        // The dot itself: press to activate, drag to change the speed.
-        let activate = Arc::clone(&on_activate);
-        let change = Arc::clone(&on_change);
-        let frac = frac_of(stage);
-        let orig = stage;
         track = track.child(label).child(
             el().key(format!("{key}/dot-{i}"))
-                .role("slider")
-                .label(format!("DPI {stage}"))
-                .range_value(f64::from(stage), f64::from(min_dpi), f64::from(max_dpi))
-                .range_step(f64::from(step))
                 .size(k, k)
                 .absolute(x, bar_y - k / 2.0)
                 .radius(k / 2.0)
                 .fill(color)
-                .shadow(1.0, 3.0, p.t.shadow)
-                .motion(motion::SNAPPY)
-                .focusable(true)
-                .on_drag(move |s: &mut State, d: &mut Drag, tx| match d.phase {
-                    Phase::Down => {
-                        d.data = frac;
-                        activate(s, i);
-                    }
-                    Phase::Move => {
-                        let knob_x = k / 2.0 + d.data * travel;
-                        let grab = if (d.start_x - knob_x).abs() <= k / 2.0 + 2.0 {
-                            d.start_x - knob_x
-                        } else {
-                            0.0
-                        };
-                        change(s, i, v_of(d.x - grab));
-                        tx.instant();
-                    }
-                    Phase::Up => {
-                        if d.cancelled() {
-                            change(s, i, orig);
-                        }
-                    }
-                }),
+                .shadow(1.0, 3.0, p.t.shadow),
         );
     }
 
