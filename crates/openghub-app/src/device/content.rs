@@ -217,7 +217,7 @@ pub(crate) fn device_content(s: &State, i: usize, p: Paint) -> El {
         Device::Mouse(_, ui) => mouse_content(i, ui, section, p),
         Device::Headset(_, ui) => headset_content(i, ui, section, p),
         Device::Litra(_, ui) => litra_content(i, ui, section, p),
-        Device::Camera(_, ui) => camera_content(i, ui, section, p, s.preview_image.as_ref()),
+        Device::Camera(_, ui) => camera_content(s, i, ui, section, p, s.preview_image.as_ref()),
         Device::Error(msg) => col().key("error").child(
             text(msg)
                 .key("msg")
@@ -752,6 +752,7 @@ pub(crate) fn apply_litra_preset(
 
 #[cfg(unix)]
 pub(crate) fn camera_content(
+    s: &State,
     i: usize,
     ui: &CameraUi,
     section: usize,
@@ -802,6 +803,39 @@ pub(crate) fn camera_content(
                         .color(t.text_secondary),
                 ),
         });
+        // Quick light switch: toggle any connected Litra right from the
+        // preview, so the studio can be lit without leaving the camera page.
+        let mut litras = Vec::new();
+        for (j, card) in s.cards.iter().enumerate() {
+            if let Device::Litra(_, lui) = &card.device {
+                litras.push((j, card.name.clone(), lui.on));
+            }
+        }
+        if !litras.is_empty() {
+            c = c.child(
+                text("Lights")
+                    .key("lights-title")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary)
+                    .pt(space::S3),
+            );
+            for (j, name, on) in litras {
+                c = c.child(toggle_row(
+                    p,
+                    format!("litra-power-{j}"),
+                    &name,
+                    on,
+                    move |s: &mut State| {
+                        let serial = s.cards[j].serial.clone();
+                        let (l, ui) = s.cards[j].litra_mut();
+                        ui.on = !ui.on;
+                        let on = ui.on;
+                        let _ = l.set_power(on);
+                        persist(&serial, |st| st.power = on);
+                    },
+                ));
+            }
+        }
     }
     for ctl in selected {
         if ctl.is_bool {
