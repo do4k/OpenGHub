@@ -3,6 +3,8 @@
 
 mod app;
 #[cfg(unix)]
+mod debounce;
+#[cfg(unix)]
 mod device;
 mod state;
 mod view;

@@ -6,6 +6,7 @@ use super::{
     sections,
 };
 use crate::app::{RT, persist};
+use crate::debounce::debounce;
 use crate::state::{Paint, State};
 use crate::widgets::{chip, labeled_slider, pill, slider, toggle_row};
 #[cfg(unix)]
@@ -415,17 +416,18 @@ pub(crate) fn rgb_row(
             let m = m.clone();
             let (r, g, b) = (ui.rgb[0], ui.rgb[1], ui.rgb[2]);
             let effect = ui.effect;
-            RT.spawn(async move {
+            let key = format!("{serial}/rgb");
+            debounce(key, async move {
                 let _ = match effect {
                     RgbEffect::Static => m.set_color(r, g, b).await,
                     RgbEffect::Breathe => m.set_breathe(r, g, b).await,
                     RgbEffect::Cycle => m.set_cycle().await,
                 };
-            });
-            persist(&serial, |st| {
-                st.red = r;
-                st.green = g;
-                st.blue = b;
+                persist(&serial, |st| {
+                    st.red = r;
+                    st.green = g;
+                    st.blue = b;
+                });
             });
         },
     )
@@ -473,10 +475,11 @@ pub(crate) fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint
                     let (h, ui) = s.cards[i].headset_mut();
                     ui.sidetone = v as i32;
                     let h = h.clone();
-                    RT.spawn(async move {
+                    let key = format!("{serial}/sidetone");
+                    debounce(key, async move {
                         let _ = h.set_sidetone(v as i32).await;
+                        persist(&serial, |st| st.sidetone = v as i32);
                     });
-                    persist(&serial, |st| st.sidetone = v as i32);
                 },
             ));
             if ui.has_noise_reduction {
@@ -585,12 +588,12 @@ pub(crate) fn band_row(
             if let Some(eq) = &mut ui.eq {
                 eq.levels[band] = v as i32;
                 let levels = eq.levels.clone();
-                let saved = levels.clone();
                 let h = h.clone();
-                RT.spawn(async move {
+                let key = format!("{serial}/eq");
+                debounce(key, async move {
                     let _ = h.set_eq_levels(&levels).await;
+                    persist(&serial, |st| st.equalizer_levels = Some(levels));
                 });
-                persist(&serial, |st| st.equalizer_levels = Some(saved));
             }
         },
     )
@@ -632,8 +635,12 @@ pub(crate) fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) ->
                     let serial = s.cards[i].serial.clone();
                     let (l, ui) = s.cards[i].litra_mut();
                     ui.brightness = v as i32;
-                    let _ = l.set_brightness(v as i32);
-                    persist(&serial, |st| st.brightness = v as i32);
+                    let l = l.clone();
+                    let key = format!("{serial}/brightness");
+                    debounce(key, async move {
+                        let _ = l.set_brightness(v as i32);
+                        persist(&serial, |st| st.brightness = v as i32);
+                    });
                 },
             ));
             let temperature = ui.temperature as f32;
@@ -657,8 +664,12 @@ pub(crate) fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) ->
                     let serial = s.cards[i].serial.clone();
                     let (l, ui) = s.cards[i].litra_mut();
                     ui.temperature = v as i32;
-                    let _ = l.set_temperature(v as i32);
-                    persist(&serial, |st| st.temperature = v as i32);
+                    let l = l.clone();
+                    let key = format!("{serial}/temperature");
+                    debounce(key, async move {
+                        let _ = l.set_temperature(v as i32);
+                        persist(&serial, |st| st.temperature = v as i32);
+                    });
                 },
             ));
             c
@@ -841,6 +852,7 @@ pub(crate) fn camera_content(
                 step,
                 format!("{value:.0}"),
                 move |s: &mut State, v| {
+                    let serial = s.cards[i].serial.clone();
                     let (cam, ui) = s.cards[i].camera_mut();
                     for c in &mut ui.controls {
                         if c.name == name_c {
@@ -848,7 +860,10 @@ pub(crate) fn camera_content(
                             let val = v as i32;
                             let cam = cam.clone();
                             let n = name_c.clone();
-                            let _ = cam.set_control(&n, val);
+                            let key = format!("{serial}/camera-{n}");
+                            debounce(key, async move {
+                                let _ = cam.set_control(&n, val);
+                            });
                         }
                     }
                 },
