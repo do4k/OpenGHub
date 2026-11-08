@@ -23,13 +23,13 @@ pub(crate) const ART_LITRA_BEAM: &[u8] = include_bytes!("../../assets/litra-beam
 pub(crate) const ART_WEBCAM: &[u8] = include_bytes!("../../assets/webcam.svg");
 #[cfg(unix)]
 pub(crate) struct Card {
-    name: String,
-    subtitle: String,
-    status: String,
-    serial: String,
-    art: &'static [u8],
-    selected_section: usize,
-    device: Device,
+    pub(crate) name: String,
+    pub(crate) subtitle: String,
+    pub(crate) status: String,
+    pub(crate) serial: String,
+    pub(crate) art: &'static [u8],
+    pub(crate) selected_section: usize,
+    pub(crate) device: Device,
 }
 
 #[cfg(unix)]
@@ -197,13 +197,34 @@ pub(crate) async fn discover() -> Vec<Card> {
         if info.product_id == litra::PRODUCT_GLOW || info.product_id == litra::PRODUCT_BEAM {
             cards.push(litra_card(&backend, &info));
         } else if info.product_id == headset::PRODUCT_ID {
-            if let Ok(Some(c)) = headset_card(&backend, &info).await {
-                cards.push(c);
+            match headset_card(&backend, &info).await {
+                Ok(Some(c)) => {
+                    // Deduplicate by subtitle (serial).
+                    if !cards
+                        .iter()
+                        .any(|existing: &Card| existing.subtitle == c.subtitle)
+                    {
+                        cards.push(c);
+                    }
+                }
+                Ok(None) => eprintln!("openghub: headset at {} is asleep/unreachable", info.path),
+                Err(e) => eprintln!("openghub: headset at {} failed: {e}", info.path),
             }
-        } else if mouse::GProMouse::is_mouse_product(info.product_id)
-            && let Ok(Some(c)) = mouse_card(&backend, &info).await
-        {
-            cards.push(c);
+        } else if mouse::GProMouse::is_mouse_product(info.product_id) {
+            match mouse_card(&backend, &info).await {
+                Ok(Some(c)) => {
+                    // Deduplicate: the receiver (c539) and the direct device
+                    // (4079) are the same mouse.
+                    if !cards
+                        .iter()
+                        .any(|existing: &Card| existing.subtitle == c.subtitle)
+                    {
+                        cards.push(c);
+                    }
+                }
+                Ok(None) => eprintln!("openghub: mouse at {} is a duplicate sibling", info.path),
+                Err(e) => eprintln!("openghub: mouse at {} failed: {e}", info.path),
+            }
         }
     }
 

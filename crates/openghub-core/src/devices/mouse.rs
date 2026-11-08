@@ -29,7 +29,7 @@ const FEATURE_REPROG_CONTROLS_V4: u16 = 0x1b04;
 
 // Probe timeout bounds each Ping while hunting for which hidraw interface and
 // device index the mouse is reachable on; operation timeout applies after.
-const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
+const PROBE_TIMEOUT: Duration = Duration::from_millis(1000);
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
 // DPI.

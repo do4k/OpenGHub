@@ -14,7 +14,7 @@ pub const PRODUCT_ID: u16 = 0x0aba;
 const FEATURE_SIDETONE: u16 = 0x8300;
 const FEATURE_EQUALIZER: u16 = 0x8310;
 
-const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
+const PROBE_TIMEOUT: Duration = Duration::from_millis(1000);
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
 // EQUALIZER (0x8310) function numbers.

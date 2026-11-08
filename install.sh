@@ -17,7 +17,11 @@ fi
 echo "==> Using $(rustc --version)"
 
 echo "==> Building the release binary (takes a while)..."
-cargo build --release -p openghub-app
+if [ ! -f /usr/lib/x86_64-linux-gnu/libxkbcommon.so ]; then
+    mkdir -p "$HOME/.local/lib"
+    ln -sf /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0 "$HOME/.local/lib/libxkbcommon.so"
+fi
+LIBRARY_PATH="$HOME/.local/lib:${LIBRARY_PATH:-}" cargo build --release -p openghub-app
 mkdir -p bin
 cp target/release/openghub-app bin/openghub
 

@@ -2,6 +2,8 @@
 //! and the AppSpec.
 #[cfg(unix)]
 use std::sync::{Arc, LazyLock, OnceLock};
+#[cfg(unix)]
+use std::time::Duration;
 
 #[cfg(unix)]
 use openghub_core::config::{ConfigStore, DeviceState};
@@ -9,7 +11,7 @@ use openghub_core::config::{ConfigStore, DeviceState};
 use rune::{AppSpec, ImageCache, Key, KeyEvent, Tx};
 
 #[cfg(unix)]
-use crate::device::{demo_camera_state, demo_dash_state, demo_state, discover, poll};
+use crate::device::{Card, demo_camera_state, demo_dash_state, demo_state, discover, poll};
 use crate::state::State;
 use crate::view::view;
 /// One shared tokio runtime for async HID++ calls (mouse/headset) and discovery.
@@ -62,11 +64,33 @@ pub(crate) fn run() {
 
     #[cfg(unix)]
     {
+        rune::set_app_id("openghub");
         let handle = app.handle();
         let _ = HANDLE.set(handle.clone());
+        let handle_init = handle.clone();
         RT.spawn(async move {
             let cards = discover().await;
-            handle.update(move |s, _| s.cards = cards);
+            handle_init.update(move |s, _| s.cards = cards);
+        });
+        // Periodic re-discovery so devices that were asleep at launch (the
+        // G Pro mouse, the headset) appear automatically once they wake.
+        // Additive only: never clears existing cards or changes the selected
+        // page, so the user is not kicked out of a device settings page.
+        let handle_periodic = handle.clone();
+        RT.spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                let new_cards = discover().await;
+                handle_periodic.update(move |s, _| {
+                    // Only add devices not already present (by subtitle/serial).
+                    for nc in new_cards {
+                        let already = s.cards.iter().any(|c| c.subtitle == nc.subtitle);
+                        if !already {
+                            s.cards.push(nc);
+                        }
+                    }
+                });
+            }
         });
     }
 
@@ -99,28 +123,51 @@ pub(crate) fn app_spec() -> AppSpec<State> {
     }
 }
 
-/// Re-runs device discovery: clears the current cards (disposing their device
-/// handles) then re-discovers and installs the fresh set. This is how a device
-/// that was asleep at launch (e.g. the G Pro mouse) appears once it wakes.
+/// Re-runs device discovery, merging the fresh set into the existing cards
+/// without discarding device handles that are still valid. Preserves the
+/// currently selected device page when the device is still present.
 #[cfg(unix)]
 pub(crate) fn refresh() {
     let Some(handle) = HANDLE.get().cloned() else {
         return;
     };
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let clear = handle.clone();
-    clear.update(move |s, _| {
-        s.cards.clear();
-        s.selected = None;
-        s.preview_image = None;
-        s.preview_pending = None;
-        let _ = tx.send(());
-    });
     RT.spawn(async move {
-        // Wait for the clear to commit (old handles disposed) before opening
-        // new ones, so a receiver's responses aren't stolen by a stale reader.
-        let _ = rx.await;
-        let cards = discover().await;
-        handle.update(move |s, _| s.cards = cards);
+        let new_cards = discover().await;
+        handle.update(move |s, _| {
+            if new_cards.is_empty() {
+                return; // keep existing on failed/empty discovery
+            }
+            // Remember the subtitle of the currently selected card.
+            let selected_subtitle = s
+                .selected
+                .and_then(|i| s.cards.get(i))
+                .map(|c| c.subtitle.clone());
+
+            // Merge: replace existing cards in place, add new ones, drop stale.
+            let mut merged: Vec<Card> = Vec::new();
+            for nc in new_cards {
+                // If a card with this subtitle already exists, replace it
+                // (fresh handle) at the same position.
+                if let Some(pos) = merged.iter().position(|c| c.subtitle == nc.subtitle) {
+                    merged[pos] = nc;
+                } else if let Some(pos) = s.cards.iter().position(|c| c.subtitle == nc.subtitle) {
+                    // Keep position from old list for stability.
+                    let _ = pos;
+                    merged.push(nc);
+                } else {
+                    merged.push(nc);
+                }
+            }
+
+            // Preserve selected index by subtitle.
+            let new_selected = selected_subtitle
+                .as_ref()
+                .and_then(|sub| merged.iter().position(|c| &c.subtitle == sub));
+
+            s.cards = merged;
+            s.selected = new_selected;
+            s.preview_image = None;
+            s.preview_pending = None;
+        });
     });
 }

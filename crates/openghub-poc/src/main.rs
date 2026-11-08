@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use openghub_core::Error;
 use openghub_core::devices::{camera, headset, litra, mouse};
 use openghub_core::hid::{self, HidBackend};
-use openghub_core::hidpp::{self, battery};
+use openghub_core::hidpp::{self, battery, root};
 use openghub_core::v4l2::{PIX_FMT_MJPEG, PIX_FMT_YUYV};
 
 const VENDOR_ID: u16 = 0x046d;
@@ -54,6 +54,7 @@ async fn main() {
     let set_eq = value_of("--set-eq=");
     let preview = has("--preview");
     let preview_yuyv = has("--preview-yuyv");
+    let wake = has("--wake");
 
     let backend = HidBackend;
     let mut devices = backend.enumerate(VENDOR_ID, 0);
@@ -70,6 +71,159 @@ async fn main() {
             d.product_id,
             d.serial.as_deref().unwrap_or("")
         );
+    }
+
+    if has("--probe-headset") {
+        for d in backend.enumerate(VENDOR_ID, 0) {
+            if d.product_id == headset::PRODUCT_ID {
+                println!("Probing headset receiver {}", d.path);
+                if let Ok(conn) = backend.open(&d) {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_secs(2));
+                    match hidpp::root::ping(&c, hidpp::DEVICE_INDEX_DIRECT).await {
+                        Ok((a, b)) => println!("  0xFF responded: {:02x} {:02x}", a, b),
+                        Err(e) => println!("  0xFF: {}", e),
+                    }
+                }
+            }
+        }
+        println!("Done.");
+        return;
+    }
+
+    if has("--probe-receiver") {
+        for d in backend.enumerate(VENDOR_ID, 0) {
+            if d.product_id == 0xc539 {
+                println!("=== Receiver node {} ===", d.path);
+                if let Ok(conn) = backend.open(&d) {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_secs(2));
+                    for idx in 0..=7u8 {
+                        match hidpp::root::ping(&c, idx).await {
+                            Ok((a, b)) => println!("  idx {} responded: {:02x} {:02x}", idx, a, b),
+                            Err(e) => println!("  idx {}: {}", idx, e),
+                        }
+                    }
+                } else {
+                    println!("  could not open");
+                }
+            }
+        }
+        println!("Done.");
+        return;
+    }
+
+    if has("--probe-headset") {
+        for d in backend.enumerate(VENDOR_ID, 0) {
+            if d.product_id == headset::PRODUCT_ID {
+                println!("Probing headset receiver {}", d.path);
+                if let Ok(conn) = backend.open(&d) {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_secs(2));
+                    match hidpp::root::ping(&c, hidpp::DEVICE_INDEX_DIRECT).await {
+                        Ok((a, b)) => println!("  0xFF responded: {:02x} {:02x}", a, b),
+                        Err(e) => println!("  0xFF: {}", e),
+                    }
+                }
+            }
+        }
+        println!("Done.");
+        return;
+    }
+
+    if has("--probe-receiver") {
+        for d in backend.enumerate(VENDOR_ID, 0) {
+            if d.product_id == 0xc539 {
+                println!("Probing receiver {}", d.path);
+                if let Ok(conn) = backend.open(&d) {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_secs(2));
+                    // Try 0xFF first
+                    match hidpp::root::ping(&c, 0xFF).await {
+                        Ok((a, b)) => println!("  0xFF responded: {:02x} {:02x}", a, b),
+                        Err(e) => println!("  0xFF: {}", e),
+                    }
+                    for idx in 0..=15u8 {
+                        if let Ok((a, b)) = hidpp::root::ping(&c, idx).await {
+                            println!("  idx {} responded: {:02x} {:02x}", idx, a, b)
+                        }
+                    }
+                }
+            }
+        }
+        println!("Done.");
+        return;
+    }
+
+    if wake {
+        println!();
+        println!("=== WAKE MODE: sending pings for 15 seconds ===");
+        println!("Press a button on the mouse / power on the headset NOW.");
+        println!();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut found_mouse = false;
+        let mut found_headset = false;
+        while Instant::now() < deadline {
+            // Mouse via receiver
+            for d in backend.enumerate(VENDOR_ID, 0) {
+                if d.product_id == 0xc539
+                    && let Ok(conn) = backend.open(&d)
+                {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_millis(200));
+                    for idx in 1..=6u8 {
+                        if root::ping(&c, idx).await.is_ok() && !found_mouse {
+                            println!("  MOUSE RESPONDED on {} at index {}", d.path, idx);
+                            found_mouse = true;
+                        }
+                    }
+                }
+            }
+            // Mouse direct (Bluetooth)
+            for d in backend.enumerate(VENDOR_ID, 0) {
+                if d.product_id == 0x4079
+                    && let Ok(conn) = backend.open(&d)
+                {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_millis(200));
+                    if hidpp::root::ping(&c, hidpp::DEVICE_INDEX_DIRECT)
+                        .await
+                        .is_ok()
+                        && !found_mouse
+                    {
+                        println!("  MOUSE (direct) RESPONDED on {}", d.path);
+                        found_mouse = true;
+                    }
+                }
+            }
+            // Headset
+            for d in backend.enumerate(VENDOR_ID, 0) {
+                if d.product_id == headset::PRODUCT_ID
+                    && let Ok(conn) = backend.open(&d)
+                {
+                    let c = hidpp::HidppConn::new(conn);
+                    c.set_timeout(Duration::from_millis(200));
+                    if hidpp::root::ping(&c, hidpp::DEVICE_INDEX_DIRECT)
+                        .await
+                        .is_ok()
+                        && !found_headset
+                    {
+                        println!("  HEADSET RESPONDED on {}", d.path);
+                        found_headset = true;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        println!();
+        if !found_mouse {
+            println!("  MOUSE: never responded (still asleep or not paired)");
+        }
+        if !found_headset {
+            println!("  HEADSET: never responded (still asleep or powered off)");
+        }
+        println!("Done.");
+        return;
     }
 
     for d in devices {
@@ -405,7 +559,10 @@ async fn probe_headset(
 ) {
     let headset = match headset::ProxHeadset::open(backend, d).await {
         Ok(Some(h)) => h,
-        Ok(None) => return,
+        Ok(None) => {
+            println!("  {}: device did not respond to ping (asleep/off)", d.path);
+            return;
+        }
         Err(e) if is_permission_denied(&e) => {
             println!(
                 "  {}: permission denied — run the PoC with sudo (see note above)",

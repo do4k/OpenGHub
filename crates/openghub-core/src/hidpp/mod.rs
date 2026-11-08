@@ -251,9 +251,9 @@ fn read_loop(
     let mut buffer = [0u8; LONG_REPORT_LEN];
 
     while !cancel.load(Ordering::Relaxed) {
-        let pfd = PollFd::new(raw, PollFlags::POLLIN);
+        let mut pfds = [PollFd::new(raw, PollFlags::POLLIN)];
         let ready = loop {
-            match poll(&mut [pfd], PollTimeout::from(500u16)) {
+            match poll(&mut pfds, PollTimeout::from(500u16)) {
                 Ok(n) => break n,
                 Err(nix::errno::Errno::EINTR) => continue,
                 Err(_) => break 0,
@@ -263,7 +263,7 @@ fn read_loop(
             continue;
         }
 
-        let revents = pfd.revents().unwrap_or(PollFlags::empty());
+        let revents = pfds[0].revents().unwrap_or(PollFlags::empty());
         if !revents.contains(PollFlags::POLLIN) {
             break; // POLLERR / POLLHUP / POLLNVAL — device went away
         }
@@ -325,9 +325,28 @@ fn read_loop(
 fn deliver(state: &Arc<Mutex<ConnState>>, key: CallKey, result: CallResult) -> bool {
     let tx = {
         let mut st = state.lock().unwrap();
-        match st.pending.remove(&key) {
-            Some(tx) => tx,
-            None => return false,
+        // Try exact match first.
+        if let Some(tx) = st.pending.remove(&key) {
+            tx
+        } else {
+            // Some kernel drivers (e.g. logitech-hidpp-device) translate the
+            // device index in responses, so a call sent to 0xFF may come back
+            // under the device's real index. Fall back to matching on
+            // (feature_index, func_sw_id) alone.
+            let mut found_key = None;
+            for k in st.pending.keys() {
+                if k.feature_index == key.feature_index && k.func_sw_id == key.func_sw_id {
+                    found_key = Some(*k);
+                    break;
+                }
+            }
+            match found_key {
+                Some(k) => match st.pending.remove(&k) {
+                    Some(tx) => tx,
+                    None => return false,
+                },
+                None => return false,
+            }
         }
     };
     let _ = tx.send(result);
