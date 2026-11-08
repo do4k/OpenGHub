@@ -2,13 +2,13 @@ use rune::tok::{radius, space, type_};
 use rune::{Color, El, Image, ImageCache, ScrollSpec, SurfaceFit, col, el, row, text};
 
 use super::{
-    CamControl, CameraUi, Card, Device, HeadsetUi, LitraUi, MouseUi, RgbEffect, display_name,
-    sections,
+    CamControl, CameraUi, Card, Device, HeadsetUi, LitraUi, MouseUi, RgbEffect, default_stages,
+    display_name, sections,
 };
 use crate::app::{RT, persist};
 use crate::debounce::debounce;
 use crate::state::{Paint, State};
-use crate::widgets::{chip, labeled_slider, pill, slider, toggle_row};
+use crate::widgets::{chip, dpi_track, labeled_slider, pill, radio, slider, toggle_row};
 #[cfg(unix)]
 pub(crate) fn card_tile(
     p: Paint,
@@ -240,36 +240,58 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
             let t = p.t;
             let mut c = col().key("sensitivity").gap(space::S3);
             c = c.child(
-                text("DPI Speed")
+                text("DPI SPEEDS")
                     .key("dpi-title")
+                    .font(type_::SECTION)
+                    .color(t.text),
+            );
+            c = c.child(
+                text("Click a speed to make it current; drag it to change it.")
+                    .key("dpi-hint")
                     .font(type_::LABEL)
                     .color(t.text_secondary),
             );
-            let mut stages = row().key("stages").gap(space::S2).flex_wrap();
-            for (j, &stage) in ui.stages.iter().enumerate() {
-                let active = ui.dpi == stage;
-                stages = stages.child(pill(
-                    p,
-                    format!("stage-{j}"),
-                    &stage.to_string(),
-                    active,
-                    move |s: &mut State| {
-                        let serial = s.cards[i].serial.clone();
-                        let (m, ui) = s.cards[i].mouse_mut();
-                        ui.dpi = stage;
-                        let stages = ui.stages.clone();
-                        let m = m.clone();
-                        RT.spawn(async move {
-                            let _ = m.set_dpi(stage).await;
-                        });
+            let (min_dpi, max_dpi, step) = (ui.dpi_min, ui.dpi_max, ui.dpi_step);
+            c = c.child(dpi_track(
+                p,
+                "dpi-track",
+                &ui.stages,
+                ui.dpi,
+                min_dpi,
+                max_dpi,
+                step,
+                move |s: &mut State, j| {
+                    let serial = s.cards[i].serial.clone();
+                    let (m, ui) = s.cards[i].mouse_mut();
+                    let stage = ui.stages[j];
+                    ui.dpi = stage;
+                    let stages = ui.stages.clone();
+                    let m = m.clone();
+                    RT.spawn(async move {
+                        let _ = m.set_dpi(stage).await;
+                    });
+                    persist(&serial, |st| {
+                        st.dpi = stage;
+                        st.dpi_stages = Some(stages);
+                    });
+                },
+                move |s: &mut State, j, v| {
+                    let serial = s.cards[i].serial.clone();
+                    let (m, ui) = s.cards[i].mouse_mut();
+                    ui.stages[j] = v;
+                    ui.dpi = v;
+                    let stages = ui.stages.clone();
+                    let m = m.clone();
+                    let key = format!("{serial}/dpi");
+                    debounce(key, async move {
+                        let _ = m.set_dpi(v).await;
                         persist(&serial, |st| {
-                            st.dpi = stage;
+                            st.dpi = v;
                             st.dpi_stages = Some(stages);
                         });
-                    },
-                ));
-            }
-            c = c.child(stages);
+                    });
+                },
+            ));
             c = c.child(match ui.battery {
                 Some((percent, charging)) => text(format!(
                     "{percent}% battery{}",
@@ -285,16 +307,16 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
             });
             if !ui.rate_options.is_empty() {
                 c = c.child(
-                    text("Report Rate (per second)")
+                    text("REPORT RATE (PER SECOND)")
                         .key("rate-title")
-                        .font(type_::LABEL)
-                        .color(t.text_secondary)
+                        .font(type_::SECTION)
+                        .color(t.text)
                         .pt(space::S3),
                 );
-                let mut rates = row().key("rates").gap(space::S2).flex_wrap();
+                let mut rates = row().key("rates").gap(space::S6);
                 for (j, &rate) in ui.rate_options.iter().enumerate() {
                     let active = ui.rate == rate;
-                    rates = rates.child(pill(
+                    rates = rates.child(radio(
                         p,
                         format!("rate-{j}"),
                         &rate.to_string(),
@@ -313,6 +335,30 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
                 }
                 c = c.child(rates);
             }
+            c = c.child(row().key("restore").pt(space::S3).child(pill(
+                p,
+                "restore-defaults",
+                "Restore default settings",
+                false,
+                move |s: &mut State| {
+                    let serial = s.cards[i].serial.clone();
+                    let (m, ui) = s.cards[i].mouse_mut();
+                    ui.stages = default_stages(ui.dpi_min, ui.dpi_max);
+                    ui.dpi = 1600.clamp(ui.dpi_min, ui.dpi_max);
+                    ui.rate = ui.rate_options.first().copied().unwrap_or(1000);
+                    let (dpi, rate, stages) = (ui.dpi, ui.rate, ui.stages.clone());
+                    let m = m.clone();
+                    RT.spawn(async move {
+                        let _ = m.set_dpi(dpi).await;
+                        let _ = m.set_report_rate(rate).await;
+                    });
+                    persist(&serial, |st| {
+                        st.dpi = dpi;
+                        st.dpi_stages = Some(stages);
+                        st.report_rate = rate;
+                    });
+                },
+            )));
             c
         }
         1 => stub_content(
