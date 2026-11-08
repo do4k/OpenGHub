@@ -604,12 +604,7 @@ pub(crate) fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) ->
             let mut c = col().key("lighting").gap(space::S3);
             let on = ui.on;
             c = c.child(toggle_row(p, "power", "Power", on, move |s: &mut State| {
-                let serial = s.cards[i].serial.clone();
-                let (l, ui) = s.cards[i].litra_mut();
-                ui.on = !ui.on;
-                let on = ui.on;
-                let _ = l.set_power(on);
-                persist(&serial, |st| st.power = on);
+                flip_litra_power(s, i);
             }));
             let brightness = ui.brightness as f32;
             c = c.child(
@@ -750,6 +745,57 @@ pub(crate) fn apply_litra_preset(
     });
 }
 
+/// Flips the power state of the Litra at card index `j`, writes to hardware
+/// and persists. Shared by the Litra page and the camera-page quick toggle.
+#[cfg(unix)]
+pub(crate) fn flip_litra_power(s: &mut State, j: usize) {
+    let serial = s.cards[j].serial.clone();
+    let (l, ui) = s.cards[j].litra_mut();
+    ui.on = !ui.on;
+    let on = ui.on;
+    let _ = l.set_power(on);
+    persist(&serial, |st| st.power = on);
+}
+
+/// Power toggles for every connected Litra, for display on the camera page.
+/// Returns `None` when no Litra is plugged in.
+#[cfg(unix)]
+pub(crate) fn litra_toggles(s: &State, p: Paint) -> Option<El> {
+    let litras: Vec<(usize, String, bool)> = s
+        .cards
+        .iter()
+        .enumerate()
+        .filter_map(|(j, card)| match &card.device {
+            Device::Litra(_, lui) => Some((j, card.name.clone(), lui.on)),
+            _ => None,
+        })
+        .collect();
+    if litras.is_empty() {
+        return None;
+    }
+
+    let t = p.t;
+    let mut c = col().key("lights").gap(space::S2).child(
+        text("Lights")
+            .key("lights-title")
+            .font(type_::LABEL)
+            .color(t.text_secondary)
+            .pt(space::S3),
+    );
+    for (j, name, on) in litras {
+        c = c.child(toggle_row(
+            p,
+            format!("litra-power-{j}"),
+            &name,
+            on,
+            move |s: &mut State| {
+                flip_litra_power(s, j);
+            },
+        ));
+    }
+    Some(c)
+}
+
 #[cfg(unix)]
 pub(crate) fn camera_content(
     s: &State,
@@ -805,36 +851,8 @@ pub(crate) fn camera_content(
         });
         // Quick light switch: toggle any connected Litra right from the
         // preview, so the studio can be lit without leaving the camera page.
-        let mut litras = Vec::new();
-        for (j, card) in s.cards.iter().enumerate() {
-            if let Device::Litra(_, lui) = &card.device {
-                litras.push((j, card.name.clone(), lui.on));
-            }
-        }
-        if !litras.is_empty() {
-            c = c.child(
-                text("Lights")
-                    .key("lights-title")
-                    .font(type_::LABEL)
-                    .color(t.text_secondary)
-                    .pt(space::S3),
-            );
-            for (j, name, on) in litras {
-                c = c.child(toggle_row(
-                    p,
-                    format!("litra-power-{j}"),
-                    &name,
-                    on,
-                    move |s: &mut State| {
-                        let serial = s.cards[j].serial.clone();
-                        let (l, ui) = s.cards[j].litra_mut();
-                        ui.on = !ui.on;
-                        let on = ui.on;
-                        let _ = l.set_power(on);
-                        persist(&serial, |st| st.power = on);
-                    },
-                ));
-            }
+        if let Some(toggles) = litra_toggles(s, p) {
+            c = c.child(toggles);
         }
     }
     for ctl in selected {
