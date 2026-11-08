@@ -7,6 +7,8 @@ mod debounce;
 #[cfg(unix)]
 mod device;
 mod state;
+#[cfg(unix)]
+mod tray;
 mod view;
 #[cfg(unix)]
 mod widgets;

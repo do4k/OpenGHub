@@ -65,12 +65,16 @@ pub(crate) fn run() {
     #[cfg(unix)]
     {
         rune::set_app_id("openghub");
+        crate::tray::init();
         let handle = app.handle();
         let _ = HANDLE.set(handle.clone());
         let handle_init = handle.clone();
         RT.spawn(async move {
             let cards = discover().await;
-            handle_init.update(move |s, _| s.cards = cards);
+            handle_init.update(move |s, _| {
+                s.cards = cards;
+                crate::tray::sync(&s.cards);
+            });
         });
         // Periodic re-discovery so devices that were asleep at launch (the
         // G Pro mouse, the headset) appear automatically once they wake.
@@ -89,6 +93,7 @@ pub(crate) fn run() {
                             s.cards.push(nc);
                         }
                     }
+                    crate::tray::sync(&s.cards);
                 });
             }
         });
@@ -168,6 +173,7 @@ pub(crate) fn refresh() {
             s.selected = new_selected;
             s.preview_image = None;
             s.preview_pending = None;
+            crate::tray::sync(&s.cards);
         });
     });
 }
