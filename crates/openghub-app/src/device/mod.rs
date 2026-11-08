@@ -44,6 +44,9 @@ pub(crate) enum Device {
 #[cfg(unix)]
 pub(crate) struct MouseUi {
     dpi: i32,
+    dpi_min: i32,
+    dpi_max: i32,
+    dpi_step: i32,
     stages: Vec<i32>,
     rate_options: Vec<i32>,
     rate: i32,
@@ -403,7 +406,7 @@ pub(crate) async fn mouse_card(
     let serial = m.serial().to_string();
     let saved = &STORE.try_get(&serial);
 
-    let (min, max, _step) = m.dpi_range();
+    let (min, max, step) = m.dpi_range();
     let mut stages = sanitize_stages(
         saved
             .as_ref()
@@ -455,6 +458,9 @@ pub(crate) async fn mouse_card(
             Arc::new(m),
             MouseUi {
                 dpi,
+                dpi_min: min,
+                dpi_max: max,
+                dpi_step: step,
                 stages,
                 rate_options,
                 rate,
