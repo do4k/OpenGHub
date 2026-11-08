@@ -1,9 +1,9 @@
-# .NET build output
-src/**/bin/
-src/**/obj/
-*.user
-.vs/
+# Rust build output
+/target/
+
+# IDE files
 .idea/
+.vs/
 
 # Published/installed artifacts
 /bin/

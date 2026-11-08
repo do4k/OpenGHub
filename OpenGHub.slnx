@@ -1,7 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/OpenGHub.App/OpenGHub.App.csproj" />
-    <Project Path="src/OpenGHub.Core/OpenGHub.Core.csproj" />
-    <Project Path="src/OpenGHub.Poc/OpenGHub.Poc.csproj" />
-  </Folder>
-</Solution>

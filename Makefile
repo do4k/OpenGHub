@@ -8,15 +8,20 @@ UDEV_RULE   := /etc/udev/rules.d/99-openghub.rules
 .PHONY: build publish test install uninstall run clean
 
 build:
-	dotnet build OpenGHub.slnx
+	cargo build
 
-# The single-file trimmed self-contained binary the packaging uses.
+# The release binary the packaging uses.
 publish:
-	dotnet publish src/OpenGHub.App -p:PublishProfile=linux-x64 -o bin
-	mv bin/OpenGHub.App bin/$(BINARY)
+	@if [ ! -f /usr/lib/x86_64-linux-gnu/libxkbcommon.so ]; then \
+		mkdir -p $(HOME)/.local/lib; \
+		ln -sf /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0 $(HOME)/.local/lib/libxkbcommon.so; \
+	fi
+	LIBRARY_PATH="$(HOME)/.local/lib:$${LIBRARY_PATH}" cargo build --release -p openghub-app
+	mkdir -p bin
+	cp target/release/openghub-app bin/$(BINARY)
 
 test:
-	dotnet build
+	cargo test
 
 install: publish
 	mkdir -p $(BINDIR)
@@ -43,7 +48,7 @@ uninstall:
 	sudo udevadm control --reload-rules
 
 run: build
-	dotnet run --project src/OpenGHub.App
+	cargo run -p openghub-app
 
 clean:
-	rm -rf bin
+	rm -rf bin target
