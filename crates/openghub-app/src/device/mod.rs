@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
+use openghub_core::config::MacroRecord;
 use openghub_core::devices::{camera, headset, litra, mouse};
 use openghub_core::hid::HidBackend;
 
 use crate::app::STORE;
+use crate::device::assign::{KEYS, MacroStep};
 use crate::state::State;
 
+pub(crate) mod assign;
 pub(crate) mod content;
 pub(crate) mod preview;
 
@@ -34,7 +37,7 @@ pub(crate) struct Card {
 
 #[cfg(unix)]
 pub(crate) enum Device {
-    Mouse(Arc<mouse::GProMouse>, MouseUi),
+    Mouse(Arc<mouse::GProMouse>, Box<MouseUi>),
     Headset(Arc<headset::ProxHeadset>, HeadsetUi),
     Litra(Arc<litra::LitraLight>, LitraUi),
     Camera(Arc<camera::V4l2Camera>, CameraUi),
@@ -56,6 +59,21 @@ pub(crate) struct MouseUi {
     cycle_supported: bool,
     breathe_supported: bool,
     effect: RgbEffect,
+    // --- Assignments (client-side model; hardware write pending) ---
+    /// `"button:layer" -> action` for both layers.
+    bindings: std::collections::HashMap<String, String>,
+    gshift_enabled: bool,
+    gshift_button: u8,
+    macros: Vec<MacroRecord>,
+    assign_category: usize,
+    pending_action: Option<String>,
+    selected_button: Option<u8>,
+    editing_macro: Option<usize>,
+    draft_steps: Vec<MacroStep>,
+    draft_op: &'static str,
+    draft_key: &'static str,
+    draft_delay: u32,
+    draft_behavior: String,
 }
 
 /// Which logo-LED effect is selected on the Lightsync page.
@@ -128,7 +146,7 @@ pub(crate) struct CamControl {
 impl Card {
     pub(crate) fn mouse_mut(&mut self) -> (&Arc<mouse::GProMouse>, &mut MouseUi) {
         match &mut self.device {
-            Device::Mouse(m, ui) => (m, ui),
+            Device::Mouse(m, ui) => (m, ui.as_mut()),
             _ => unreachable!(),
         }
     }
@@ -484,7 +502,7 @@ pub(crate) async fn mouse_card(
         selected_section: 0,
         device: Device::Mouse(
             Arc::new(m),
-            MouseUi {
+            Box::new(MouseUi {
                 dpi,
                 dpi_min: min,
                 dpi_max: max,
@@ -498,7 +516,26 @@ pub(crate) async fn mouse_card(
                 cycle_supported,
                 breathe_supported,
                 effect: RgbEffect::Static,
-            },
+                bindings: saved
+                    .as_ref()
+                    .and_then(|s| s.button_bindings.clone())
+                    .unwrap_or_default(),
+                gshift_enabled: saved.as_ref().is_some_and(|s| s.gshift_enabled),
+                gshift_button: saved.as_ref().and_then(|s| s.gshift_button).unwrap_or(5),
+                macros: saved
+                    .as_ref()
+                    .and_then(|s| s.macros.clone())
+                    .unwrap_or_default(),
+                assign_category: 0,
+                pending_action: None,
+                selected_button: None,
+                editing_macro: None,
+                draft_steps: Vec::new(),
+                draft_op: "tap",
+                draft_key: KEYS[0].0,
+                draft_delay: 50,
+                draft_behavior: "once".to_string(),
+            }),
         ),
     }))
 }

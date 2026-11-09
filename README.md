@@ -59,7 +59,7 @@ intentionally out of scope.
 | Shift DPI / DPI cycle | ✅ | 🔜 | Needs button remap — see below (#10) |
 | Battery + system tray | ✅ | ✅ | Live tooltip, Show/Quit (#23) |
 | **Assignments** | | | |
-| Button remapping | ✅ | ⚠️ | **Blocked on this unit**: no `0x1b04` on either transport, so Assignments is a stub |
+| Button remapping | ✅ | 🚧 | Interactive Assignments UI (categories, mouse canvas, G-Shift, macro editor) with stored bindings; hardware write blocked on this unit (no `0x1b04`), engine 🔜 #15 |
 | Key / command remapping | ✅ | ❌ | Same hardware block |
 | G-Shift layering | ✅ | ❌ | Needs remap first |
 | App actions (Discord/OBS SDK) | ✅ | ❌ | Not started; needs a daemon WebSocket and licensing surface |
