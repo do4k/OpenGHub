@@ -39,6 +39,45 @@ the sections a device supports appear. Button remapping (`REPROG_CONTROLS`)
 stays a stub on the receiver-connected G Pro Wireless — that firmware
 exposes no `0x1b04` feature, and the uinput emission layer isn't wired up.
 
+## Capability matrix
+
+What G HUB does vs what Open G Hub does today. 🔜 = tracked in a GitHub
+issue; ⚠️ = hardware-blocked on the current device; ❌ = not started or
+intentionally out of scope.
+
+| Feature | G HUB | Open G Hub | Notes |
+| --- | --- | --- | --- |
+| DPI stages + report rate | ✅ | ✅ | Track, radios, restore; up to 8000 Hz on newer units |
+| Angle snapping / surface tuning | ✅ | ❌ | Not exposed by the G Pro Wireless (probed live) |
+| Shift DPI / DPI cycle | ✅ | 🔜 | Needs button remap — see below (#10) |
+| Battery + system tray | ✅ | ✅ | Live tooltip, Show/Quit (#23) |
+| **Assignments** | | | |
+| Button remapping | ✅ | ⚠️ | **Blocked on this unit**: no `0x1b04` on either transport, so Assignments is a stub |
+| Key / command remapping | ✅ | ❌ | Same hardware block |
+| G-Shift layering | ✅ | ❌ | Needs remap first |
+| App actions (Discord/OBS SDK) | ✅ | ❌ | Not started; needs a daemon WebSocket and licensing surface |
+| Macros (record/repeat/sequence) | ✅ | 🔜 | #15 |
+| Per-app auto profiles | ✅ | 🔜 | #14 (design note #31) |
+| On-board profile writes | ✅ | 🔜 | #16 |
+| **Lighting** | | | |
+| Static / Cycle / Breathe + live preview | ✅ | ✅ | Animated glide on the mouse art |
+| Per-zone / per-key RGB | ✅ | 🔜 | #13 (zones); keyboards #30 |
+| Screen sampler / audio visualizer | ✅ | 🔜 | #29 |
+| Multi-device sync | ✅ | 🔜 | #28 |
+| **Headset** | | | |
+| Sidetone, EQ, EQ presets | ✅ | ✅ | 10-band, derived Custom state (#9) |
+| Mic noise reduction | ✅ | ✅ | Hides on firmware without `0x8310` NR |
+| Volume / mic gain | ✅ | 🔜 | #11 |
+| DTS surround / Blue VO!CE | ✅ | ❌ | Licensed DSP — out of scope |
+| **Camera / lights** | | | |
+| Webcam preview + V4L2 controls | n/a | ✅ | ~15 fps MJPEG/YUYV; resolution/framerate selector 🔜 #12 |
+| Litra power/brightness/temp + presets | ✅ | ✅ | One-tap presets; tray toggle on camera page |
+| **Platform** | | | |
+| Keyboard / wheel drivers | ✅ | 🔜 | #30 |
+| CLI for scripting | n/a | 🔜 | #24 (Poc probes exist today) |
+| Agent/system tray daemon | ✅ | 🔜 | #31 (design doc first) |
+| Accounts, cloud, forced updates | ✅ | ❌ | Local-first by design |
+
 ## Quick start
 
 ```bash
