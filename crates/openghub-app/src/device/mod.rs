@@ -78,6 +78,22 @@ pub(crate) struct HeadsetUi {
 }
 
 #[cfg(unix)]
+impl MouseUi {
+    /// (percent, charging), if the device reports battery.
+    pub(crate) fn battery(&self) -> Option<(i32, bool)> {
+        self.battery
+    }
+}
+
+#[cfg(unix)]
+impl HeadsetUi {
+    /// (percent, charging), if the device reports battery.
+    pub(crate) fn battery(&self) -> Option<(i32, bool)> {
+        self.battery
+    }
+}
+
+#[cfg(unix)]
 pub(crate) struct EqUi {
     frequencies: Vec<i32>,
     min_db: i32,

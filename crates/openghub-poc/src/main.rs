@@ -73,6 +73,33 @@ async fn main() {
         );
     }
 
+    if has("--probe-sensors") {
+        for d in backend.enumerate(VENDOR_ID, 0) {
+            if d.product_id != 0x4079 {
+                continue;
+            }
+            println!("Probing sensors on {}", d.path);
+            if let Ok(fd) = backend.open(&d) {
+                let c = hidpp::HidppConn::new(fd);
+                c.set_timeout(Duration::from_secs(1));
+                probe_sensor_features(&c).await;
+                // Second pass: with hidden features enabled (0x1e00).
+                if let Ok(Some(hi)) =
+                    hidpp::root::get_feature_index(&c, hidpp::DEVICE_INDEX_DIRECT, 0x1e00).await
+                {
+                    println!("  enabling hidden features (0x1e00 @ 0x{hi:02x})");
+                    let _ = c.call(hidpp::DEVICE_INDEX_DIRECT, hi, 0x10, &[0x01]).await;
+                    probe_sensor_features(&c).await;
+                    let _ = c.call(hidpp::DEVICE_INDEX_DIRECT, hi, 0x10, &[0x00]).await;
+                } else {
+                    println!("  no hidden-features switch (0x1e00)");
+                }
+            }
+        }
+        println!("Done.");
+        return;
+    }
+
     if has("--probe-headset") {
         for d in backend.enumerate(VENDOR_ID, 0) {
             if d.product_id == headset::PRODUCT_ID {
@@ -106,48 +133,6 @@ async fn main() {
                     }
                 } else {
                     println!("  could not open");
-                }
-            }
-        }
-        println!("Done.");
-        return;
-    }
-
-    if has("--probe-headset") {
-        for d in backend.enumerate(VENDOR_ID, 0) {
-            if d.product_id == headset::PRODUCT_ID {
-                println!("Probing headset receiver {}", d.path);
-                if let Ok(conn) = backend.open(&d) {
-                    let c = hidpp::HidppConn::new(conn);
-                    c.set_timeout(Duration::from_secs(2));
-                    match hidpp::root::ping(&c, hidpp::DEVICE_INDEX_DIRECT).await {
-                        Ok((a, b)) => println!("  0xFF responded: {:02x} {:02x}", a, b),
-                        Err(e) => println!("  0xFF: {}", e),
-                    }
-                }
-            }
-        }
-        println!("Done.");
-        return;
-    }
-
-    if has("--probe-receiver") {
-        for d in backend.enumerate(VENDOR_ID, 0) {
-            if d.product_id == 0xc539 {
-                println!("Probing receiver {}", d.path);
-                if let Ok(conn) = backend.open(&d) {
-                    let c = hidpp::HidppConn::new(conn);
-                    c.set_timeout(Duration::from_secs(2));
-                    // Try 0xFF first
-                    match hidpp::root::ping(&c, 0xFF).await {
-                        Ok((a, b)) => println!("  0xFF responded: {:02x} {:02x}", a, b),
-                        Err(e) => println!("  0xFF: {}", e),
-                    }
-                    for idx in 0..=15u8 {
-                        if let Ok((a, b)) = hidpp::root::ping(&c, idx).await {
-                            println!("  idx {} responded: {:02x} {:02x}", idx, a, b)
-                        }
-                    }
                 }
             }
         }
@@ -547,6 +532,24 @@ async fn probe_hidpp(backend: &HidBackend, d: &hid::DeviceInfo, verbose: bool) {
                     println!("  {}: 0x{idx:02x} battery: {e}", d.path);
                 }
             }
+        }
+    }
+}
+
+async fn probe_sensor_features(c: &hidpp::HidppConn) {
+    for feat in [0x2230u16, 0x2240u16] {
+        match hidpp::root::get_feature_index(c, hidpp::DEVICE_INDEX_DIRECT, feat).await {
+            Ok(Some(fi)) => {
+                println!("  0x{feat:04x} at feature index 0x{fi:02x}");
+                for func in [0x00u8, 0x10u8, 0x20u8, 0x30u8] {
+                    match c.call(hidpp::DEVICE_INDEX_DIRECT, fi, func, &[]).await {
+                        Ok(resp) => println!("    func 0x{func:02x} -> {resp:?}"),
+                        Err(e) => println!("    func 0x{func:02x}: {e}"),
+                    }
+                }
+            }
+            Ok(None) => println!("  0x{feat:04x}: not present"),
+            Err(e) => println!("  0x{feat:04x}: {e}"),
         }
     }
 }
