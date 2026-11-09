@@ -1028,12 +1028,18 @@ pub(crate) fn camera_content(
     let mut c = col().key("camera").gap(space::S2);
     match section {
         0 => {
-            c = c.child(text("Camera").key("title").font(heading()).color(t.text));
             c = c.child(
-                text("Focus, expose and frame your shot.")
-                    .key("desc")
-                    .font(type_::LABEL)
-                    .color(t.text_secondary),
+                el().w_full()
+                    .center()
+                    .child(text("Streaming").key("title").font(heading()).color(t.text)),
+            );
+            c = c.child(
+                el().w_full().center().child(
+                    text("Pan and tilt with the arrows; adjust zoom, focus and exposure below.")
+                        .key("desc")
+                        .font(type_::LABEL)
+                        .color(t.text_secondary),
+                ),
             );
         }
         2 => {
@@ -1048,31 +1054,19 @@ pub(crate) fn camera_content(
         _ => {}
     }
     if section == 0 {
-        c = c.child(match preview {
-            Some(image) => el()
-                .key("preview")
-                .size(480.0, 360.0)
-                .radius(8.0)
-                .pixels_fit(image.pixels(), SurfaceFit::Fit),
-            None => el()
-                .key("preview")
-                .size(480.0, 360.0)
-                .radius(8.0)
-                .fill(Color::BLACK.alpha(0.3))
-                .child(
-                    text("preview")
-                        .key("ph")
-                        .font(type_::BODY)
-                        .color(t.text_secondary),
-                ),
-        });
+        c = c.child(
+            row()
+                .key("preview-row")
+                .justify_center()
+                .child(camera_preview(i, p, preview)),
+        );
         // Quick light switch: toggle any connected Litra right from the
         // preview, so the studio can be lit without leaving the camera page.
         if let Some(toggles) = litra_toggles(s, p) {
             c = c.child(toggles);
         }
     }
-    for ctl in selected {
+    for ctl in &selected {
         if ctl.is_bool {
             let name = ctl.name.clone();
             let key = name.clone();
@@ -1128,7 +1122,99 @@ pub(crate) fn camera_content(
             ));
         }
     }
+    // Restore all camera controls to the device's factory defaults.
+    if !selected.is_empty() {
+        c = c.child(
+            row()
+                .key("restore")
+                .justify_center()
+                .pt(space::S3)
+                .child(pill(
+                    p,
+                    "restore-camera",
+                    "Restore camera defaults",
+                    false,
+                    move |s: &mut State| {
+                        let (cam, ui) = s.cards[i].camera_mut();
+                        for ctl in &mut ui.controls {
+                            let v = ctl.default;
+                            if ctl.value != v {
+                                ctl.value = v;
+                                let cam = cam.clone();
+                                let n = ctl.name.clone();
+                                let _ = cam.set_control(&n, v);
+                            }
+                        }
+                    },
+                )),
+        );
+    }
     c
+}
+
+/// The 480×360 preview with G HUB's pan/tilt arrows on its edges.
+#[cfg(unix)]
+fn camera_preview(i: usize, p: Paint, preview: Option<&rune::Image>) -> El {
+    let t = p.t;
+    let shot = match preview {
+        Some(image) => el()
+            .key("preview")
+            .size(480.0, 360.0)
+            .radius(8.0)
+            .pixels_fit(image.pixels(), rune::SurfaceFit::Fit),
+        None => el()
+            .key("preview")
+            .size(480.0, 360.0)
+            .radius(8.0)
+            .fill(Color::BLACK.alpha(0.3))
+            .child(
+                text("preview")
+                    .key("ph")
+                    .font(type_::BODY)
+                    .color(t.text_secondary),
+            ),
+    };
+    let mut box_ = el().key("preview-box").size(480.0, 360.0).child(shot);
+    for (key, glyph, x, y) in [
+        ("pan-left", "◀", 6.0, 166.0),
+        ("pan-right", "▶", 446.0, 166.0),
+        ("tilt-up", "▲", 226.0, 6.0),
+        ("tilt-down", "▼", 226.0, 326.0),
+    ] {
+        let name = match key {
+            "pan-left" | "pan-right" => ("Pan", if key == "pan-left" { -1 } else { 1 }),
+            _ => ("Tilt", if key == "tilt-up" { 1 } else { -1 }),
+        };
+        box_ = box_.child(
+            row()
+                .key(key)
+                .role("button")
+                .label(key)
+                .size(28.0, 28.0)
+                .absolute(x, y)
+                .center()
+                .radius(14.0)
+                .fill(Color::BLACK.alpha(0.45))
+                .focusable(true)
+                .on_press(move |s: &mut State| nudge_camera(s, i, name.0, name.1))
+                .child(text(glyph).font(type_::LABEL).color(Color::WHITE)),
+        );
+    }
+    box_
+}
+
+/// Moves a discrete camera control (Pan/Tilt) by one device step.
+#[cfg(unix)]
+fn nudge_camera(s: &mut State, i: usize, name: &str, dir: i32) {
+    let (cam, ui) = s.cards[i].camera_mut();
+    if let Some(ctl) = ui.controls.iter_mut().find(|c| c.name == name) {
+        let step = ctl.step.max(1);
+        let v = (ctl.value + dir * step).clamp(ctl.min, ctl.max);
+        ctl.value = v;
+        let cam = cam.clone();
+        let n = ctl.name.clone();
+        let _ = cam.set_control(&n, v);
+    }
 }
 
 #[cfg(unix)]

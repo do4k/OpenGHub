@@ -139,6 +139,7 @@ pub(crate) struct CamControl {
     max: i32,
     step: i32,
     value: i32,
+    default: i32,
     is_bool: bool,
 }
 
@@ -555,6 +556,7 @@ pub(crate) fn camera_card(c: camera::V4l2Camera) -> Card {
                 max: ctl.max,
                 step: ctl.step,
                 value,
+                default: ctl.default,
                 is_bool,
             }
         })
