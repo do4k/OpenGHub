@@ -239,7 +239,7 @@ pub(crate) fn device_content(s: &State, i: usize, p: Paint) -> El {
     let card = &s.cards[i];
     let section = card.selected_section;
     match &card.device {
-        Device::Mouse(_, ui) => mouse_content(i, ui, section, p),
+        Device::Mouse(_, ui) => mouse_content(i, ui, section, p, s.clock),
         Device::Headset(_, ui) => headset_content(i, ui, section, p),
         Device::Litra(_, ui) => litra_content(i, ui, section, p),
         Device::Camera(_, ui) => camera_content(s, i, ui, section, p, s.preview_image.as_ref()),
@@ -258,7 +258,7 @@ pub(crate) fn device_content(s: &State, i: usize, p: Paint) -> El {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) -> El {
+pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint, clock: f64) -> El {
     match section {
         0 => {
             let t = p.t;
@@ -394,6 +394,7 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
         _ => {
             let t = p.t;
             let (r, g, b) = (ui.rgb[0], ui.rgb[1], ui.rgb[2]);
+            let [r, g, b] = effective_rgb(ui.effect, [r, g, b], clock);
             let swatch = Color {
                 r: srgb(r),
                 g: srgb(g),
@@ -1107,6 +1108,45 @@ pub(crate) fn srgb(v: u8) -> f32 {
     rune::color::srgb_decode(v as f32 / 255.0)
 }
 
+/// The LED effect period the hardware runs, in seconds (driver writes
+/// 5000 ms for both Cycle and Breathe).
+#[cfg(unix)]
+const LED_PERIOD_S: f64 = 5.0;
+
+/// The color the hardware is currently showing, computed from the last
+/// written state — the device has no color read-back. Cycle sweeps the
+/// sRGB spectrum; Breathe pulses the user's color with a sine.
+#[cfg(unix)]
+pub(crate) fn effective_rgb(effect: RgbEffect, rgb: [u8; 3], t: f64) -> [u8; 3] {
+    match effect {
+        RgbEffect::Static => rgb,
+        RgbEffect::Cycle => hsv_to_rgb((t / LED_PERIOD_S * 360.0).rem_euclid(360.0), 1.0, 1.0),
+        RgbEffect::Breathe => {
+            let k = 0.5 + 0.5 * (2.0 * std::f64::consts::PI * t / LED_PERIOD_S).sin();
+            let mul = |v: u8| (v as f64 * k).round().clamp(0.0, 255.0) as u8;
+            [mul(rgb[0]), mul(rgb[1]), mul(rgb[2])]
+        }
+    }
+}
+
+/// sRGB HSV (hue in degrees) → RGB bytes, for the Cycle spectrum preview.
+#[cfg(unix)]
+fn hsv_to_rgb(h: f64, s: f64, v: f64) -> [u8; 3] {
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+    let (r, g, b) = match (h / 60.0).floor() as i32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let to_u8 = |ch: f64| ((ch + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+    [to_u8(r), to_u8(g), to_u8(b)]
+}
+
 #[cfg(unix)]
 pub(crate) fn freq_label(hz: i32) -> String {
     if hz >= 1000 {
@@ -1119,6 +1159,8 @@ pub(crate) fn freq_label(hz: i32) -> String {
 #[cfg(test)]
 mod tests {
     use super::match_eq_preset;
+    use crate::device::RgbEffect;
+    use crate::device::content::effective_rgb;
 
     #[test]
     fn flat_and_boosts_match_their_presets() {
@@ -1136,5 +1178,36 @@ mod tests {
     fn wrong_band_count_never_matches() {
         assert_eq!(match_eq_preset(&[0; 5]), None);
         assert_eq!(match_eq_preset(&[]), None);
+    }
+
+    #[test]
+    fn static_is_identity() {
+        assert_eq!(
+            effective_rgb(RgbEffect::Static, [10, 20, 30], 3.0),
+            [10, 20, 30]
+        );
+    }
+
+    #[test]
+    fn breathe_hits_peak_and_floor() {
+        // Period 5 s: quarter-period = peak (color), three-quarters = dark.
+        assert_eq!(
+            effective_rgb(RgbEffect::Breathe, [200, 100, 50], 1.25),
+            [200, 100, 50]
+        );
+        assert_eq!(
+            effective_rgb(RgbEffect::Breathe, [200, 100, 50], 3.75),
+            [0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn cycle_sweeps_spectrum() {
+        // t=0 → hue 0 (red); half period → hue 180 (cyan).
+        assert_eq!(effective_rgb(RgbEffect::Cycle, [0, 0, 0], 0.0), [255, 0, 0]);
+        assert_eq!(
+            effective_rgb(RgbEffect::Cycle, [0, 0, 0], 2.5),
+            [0, 255, 255]
+        );
     }
 }

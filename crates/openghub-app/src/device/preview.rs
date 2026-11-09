@@ -5,7 +5,7 @@ use openghub_core::v4l2::PIX_FMT_YUYV;
 
 use rune::Tx;
 
-use super::Device;
+use super::{Device, led_animating};
 use crate::state::State;
 #[cfg(unix)]
 pub(crate) fn stop_camera_previews(s: &State) {
@@ -25,10 +25,19 @@ pub(crate) fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
     rgba
 }
 
-/// Drives the live webcam preview: starts the selected camera's stream and
-/// publishes each new frame as an [`Image`] for the view to draw.
-#[cfg(unix)]
-pub(crate) fn poll(s: &mut State, _clock: f64, tx: &mut Tx) -> bool {
+/// Polls run each frame; this one drives the webcam preview and the LED
+/// preview animation.
+pub(crate) fn poll(s: &mut State, clock: f64, tx: &mut Tx) -> bool {
+    s.clock = clock;
+    // The hardware has no color read-back, so the LED swatch is animated
+    // client-side from the last written state. While the LIGHTSYNC page
+    // shows a Cycle/Breathe effect, wake at ~30 fps to track the device's
+    // 5 s period.
+    if led_animating(s) {
+        tx.wake_after(Duration::from_millis(33));
+        return true;
+    }
+
     let Some(i) = s.selected else {
         stop_camera_previews(s);
         s.preview_image = None;
