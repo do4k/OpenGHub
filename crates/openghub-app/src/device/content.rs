@@ -1,4 +1,4 @@
-use rune::tok::{radius, space, type_};
+use rune::tok::{self, TextStyle, radius, space, type_};
 use rune::{Color, El, Image, ImageCache, ScrollSpec, SurfaceFit, col, el, row, text};
 
 use super::{
@@ -9,6 +9,12 @@ use crate::app::{RT, persist};
 use crate::debounce::debounce;
 use crate::state::{Paint, State};
 use crate::widgets::{chip, dpi_track, labeled_slider, pill, radio, slider, toggle_row};
+
+/// G HUB-style large section heading.
+#[cfg(unix)]
+const fn heading() -> TextStyle {
+    TextStyle::new(18.0, 400.0)
+}
 #[cfg(unix)]
 pub(crate) fn card_tile(
     p: Paint,
@@ -41,7 +47,7 @@ pub(crate) fn card_tile(
         .child(
             text(&name)
                 .key("name")
-                .font(type_::BODY)
+                .font(type_::TITLE)
                 .color(t.text)
                 .wrap(),
         )
@@ -55,7 +61,7 @@ pub(crate) fn card_tile(
         .child(
             el().key("art").grow(1.0).center().child(match art {
                 Some(image) => el()
-                    .size(160.0, 130.0)
+                    .size(180.0, 150.0)
                     .pixels_fit(image.pixels(), SurfaceFit::Fit),
                 None => text("⚙")
                     .key("glyph")
@@ -64,22 +70,12 @@ pub(crate) fn card_tile(
             }),
         )
         .child(
-            row()
-                .key("foot")
-                .w_full()
-                .justify_between()
-                .child(
-                    text("⚙")
-                        .key("gear")
-                        .font(type_::BODY)
-                        .color(t.text_secondary),
-                )
-                .child(
-                    text(&card.status)
-                        .key("status")
-                        .font(type_::LABEL)
-                        .color(t.text_secondary),
-                ),
+            row().key("foot").w_full().justify_end().child(
+                text(&card.status)
+                    .key("status")
+                    .font(type_::LABEL)
+                    .color(tok::accent(4, true)),
+            ),
         )
 }
 
@@ -89,17 +85,24 @@ pub(crate) fn device_page(s: &State, i: usize, p: Paint) -> El {
     let card = &s.cards[i];
     let secs = sections(card);
 
-    col()
-        .key("device")
+    let battery = match &card.device {
+        Device::Mouse(_, ui) => ui.battery,
+        Device::Headset(_, ui) => ui.battery,
+        _ => None,
+    };
+    let status_text = match battery {
+        Some((percent, _charging)) => format!("{percent}% · Connected"),
+        None => "Connected".to_string(),
+    };
+
+    let header = row()
+        .key("header")
         .w_full()
-        .h_full()
-        .fill(t.bg)
-        .px(space::S6)
-        .py(space::S6)
+        .center_y()
+        .justify_between()
         .child(
             row()
-                .key("header")
-                .w_full()
+                .key("left")
                 .center_y()
                 .gap(space::S3)
                 .child(
@@ -124,7 +127,7 @@ pub(crate) fn device_page(s: &State, i: usize, p: Paint) -> El {
                         .child(
                             text(display_name(&card.name))
                                 .key("name")
-                                .font(type_::TITLE)
+                                .font(TextStyle::new(22.0, 600.0))
                                 .color(t.text),
                         )
                         .child(
@@ -135,6 +138,28 @@ pub(crate) fn device_page(s: &State, i: usize, p: Paint) -> El {
                         ),
                 ),
         )
+        .child(
+            row()
+                .key("status")
+                .center_y()
+                .gap(6.0)
+                .child(
+                    el().key("dot")
+                        .size(8.0, 8.0)
+                        .radius(4.0)
+                        .fill(tok::accent(4, true)),
+                )
+                .child(text(status_text).font(type_::LABEL).color(t.text_secondary)),
+        );
+
+    col()
+        .key("device")
+        .w_full()
+        .h_full()
+        .fill(t.bg)
+        .px(space::S6)
+        .py(space::S6)
+        .child(header)
         .child(
             row()
                 .key("body")
@@ -152,12 +177,6 @@ pub(crate) fn device_page(s: &State, i: usize, p: Paint) -> El {
                             stick_bottom: false,
                         })
                         .gap(space::S3)
-                        .child(
-                            text(&card.status)
-                                .key("status")
-                                .font(type_::LABEL)
-                                .color(p.accent),
-                        )
                         .child(device_content(s, i, p)),
                 ),
         )
@@ -184,19 +203,24 @@ pub(crate) fn section_rail(
                 .py(space::S2)
                 .center()
                 .radius(radius::MD)
-                .fill(if selected {
-                    t.press
-                } else {
-                    Color::TRANSPARENT
-                })
                 .hover(t.hover)
                 .focusable(true)
                 .on_press(move |s: &mut State| s.cards[i].selected_section = j)
                 .child(
-                    text(*glyph)
-                        .key("glyph")
-                        .font(type_::BODY)
-                        .color(if selected { t.text } else { t.text_secondary }),
+                    el().key("icon")
+                        .size(30.0, 30.0)
+                        .radius(8.0)
+                        .fill(if selected {
+                            p.accent
+                        } else {
+                            Color::TRANSPARENT
+                        })
+                        .center()
+                        .child(text(*glyph).font(type_::BODY).color(if selected {
+                            Color::WHITE
+                        } else {
+                            t.text_secondary
+                        })),
                 )
                 .child(
                     text(*title)
@@ -242,7 +266,7 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
             c = c.child(
                 text("DPI SPEEDS")
                     .key("dpi-title")
-                    .font(type_::SECTION)
+                    .font(heading())
                     .color(t.text),
             );
             c = c.child(
@@ -309,7 +333,7 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
                 c = c.child(
                     text("REPORT RATE (PER SECOND)")
                         .key("rate-title")
-                        .font(type_::SECTION)
+                        .font(heading())
                         .color(t.text)
                         .pt(space::S3),
                 );
@@ -377,11 +401,12 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint) ->
                 a: 1.0,
             };
             let mut c = col().key("lighting").gap(space::S2);
+            c = c.child(text("LIGHTSYNC").key("title").font(heading()).color(t.text));
             c = c.child(
-                text("LIGHTSYNC")
-                    .key("title")
-                    .font(type_::SECTION)
-                    .color(t.text),
+                text("Set the logo LED color and light effects.")
+                    .key("desc")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary),
             );
             let mut effects = row().key("effects").gap(space::S2).flex_wrap();
             effects = effects.child(pill(
@@ -518,9 +543,10 @@ pub(crate) fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint
     match section {
         0 => {
             let mut c = col().key("acoustics").gap(space::S3);
+            c = c.child(text("Sidetone").key("title").font(heading()).color(t.text));
             c = c.child(
-                text("Sidetone")
-                    .key("title")
+                text("Hear your own microphone in real time — turn it up to check your levels.")
+                    .key("desc")
                     .font(type_::LABEL)
                     .color(t.text_secondary),
             );
@@ -576,11 +602,12 @@ pub(crate) fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint
                     eq.min_db,
                     eq.max_db
                 );
+                c = c.child(text("Equalizer").key("title").font(heading()).color(t.text));
                 c = c.child(
-                    text("Equalizer")
-                        .key("title")
-                        .font(type_::SECTION)
-                        .color(t.text),
+                    text("Shape the sound across 10 bands, or start from a preset.")
+                        .key("desc")
+                        .font(type_::LABEL)
+                        .color(t.text_secondary),
                 );
                 c = c.child(
                     text(&range)
@@ -707,6 +734,13 @@ pub(crate) fn litra_content(i: usize, ui: &LitraUi, section: usize, p: Paint) ->
     match section {
         0 => {
             let mut c = col().key("lighting").gap(space::S3);
+            c = c.child(text("Lighting").key("title").font(heading()).color(t.text));
+            c = c.child(
+                text("Control power, brightness and color temperature.")
+                    .key("desc")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary),
+            );
             let on = ui.on;
             c = c.child(toggle_row(p, "power", "Power", on, move |s: &mut State| {
                 flip_litra_power(s, i);
@@ -943,6 +977,27 @@ pub(crate) fn camera_content(
     };
 
     let mut c = col().key("camera").gap(space::S2);
+    match section {
+        0 => {
+            c = c.child(text("Camera").key("title").font(heading()).color(t.text));
+            c = c.child(
+                text("Focus, expose and frame your shot.")
+                    .key("desc")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary),
+            );
+        }
+        2 => {
+            c = c.child(text("Image").key("title").font(heading()).color(t.text));
+            c = c.child(
+                text("Fine-tune brightness, contrast, saturation and sharpness.")
+                    .key("desc")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary),
+            );
+        }
+        _ => {}
+    }
     if section == 0 {
         c = c.child(match preview {
             Some(image) => el()
