@@ -80,7 +80,7 @@ pub(crate) fn card_tile(
 }
 
 #[cfg(unix)]
-pub(crate) fn device_page(s: &State, i: usize, p: Paint) -> El {
+pub(crate) fn device_page(s: &State, i: usize, p: Paint, scale: f32) -> El {
     let t = p.t;
     let card = &s.cards[i];
     let secs = sections(card);
@@ -177,7 +177,7 @@ pub(crate) fn device_page(s: &State, i: usize, p: Paint) -> El {
                             stick_bottom: false,
                         })
                         .gap(space::S3)
-                        .child(device_content(s, i, p)),
+                        .child(device_content(s, i, p, scale)),
                 ),
         )
 }
@@ -235,11 +235,11 @@ pub(crate) fn section_rail(
 }
 
 #[cfg(unix)]
-pub(crate) fn device_content(s: &State, i: usize, p: Paint) -> El {
+pub(crate) fn device_content(s: &State, i: usize, p: Paint, scale: f32) -> El {
     let card = &s.cards[i];
     let section = card.selected_section;
     match &card.device {
-        Device::Mouse(_, ui) => mouse_content(i, ui, section, p, s.clock),
+        Device::Mouse(_, ui) => mouse_content(s, i, ui, section, p, s.clock, scale),
         Device::Headset(_, ui) => headset_content(i, ui, section, p),
         Device::Litra(_, ui) => litra_content(i, ui, section, p),
         Device::Camera(_, ui) => camera_content(s, i, ui, section, p, s.preview_image.as_ref()),
@@ -258,7 +258,15 @@ pub(crate) fn device_content(s: &State, i: usize, p: Paint) -> El {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint, clock: f64) -> El {
+pub(crate) fn mouse_content(
+    s: &State,
+    i: usize,
+    ui: &MouseUi,
+    section: usize,
+    p: Paint,
+    clock: f64,
+    scale: f32,
+) -> El {
     match section {
         0 => {
             let t = p.t;
@@ -436,7 +444,12 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint, cl
                 ));
             }
             c = c.child(effects);
-            c = c.child(el().key("swatch").size(64.0, 40.0).radius(6.0).fill(swatch));
+            c = c.child(
+                row()
+                    .key("mouse-preview-row")
+                    .justify_center()
+                    .child(mouse_preview(s, i, swatch, scale)),
+            );
             if ui.effect == RgbEffect::Cycle {
                 c = c.child(
                     text("Cycle sweeps the full spectrum; it has no per-color control.")
@@ -459,6 +472,41 @@ pub(crate) fn mouse_content(i: usize, ui: &MouseUi, section: usize, p: Paint, cl
             );
             c
         }
+    }
+}
+
+/// Renders the mouse art with an animated LED glow dot over the logo.
+/// The SVG viewBox is 200×230; the G logo ring is centered at (114, 160)
+/// with radius ~20 units (the logo zone). Falls back to a flat swatch when
+/// the card has no art or the image cache isn't ready.
+#[cfg(unix)]
+fn mouse_preview(s: &State, i: usize, color: Color, scale: f32) -> El {
+    let card = &s.cards[i];
+    let image = (!card.art.is_empty())
+        .then_some(s.images.as_ref())
+        .flatten()
+        .map(|im| im.svg(card.art, 200.0, scale));
+    let (w, h) = (240.0, 276.0);
+    let (cx, cy, r) = (114.0 / 200.0 * w, 160.0 / 230.0 * h, 18.0 / 200.0 * w);
+    let glow_r = r * 1.45;
+    match image {
+        Some(image) => el()
+            .key("mouse-preview")
+            .size(w, h)
+            .child(el().size(w, h).pixels_fit(image.pixels(), SurfaceFit::Fit))
+            .child(
+                el().size(glow_r * 2.0, glow_r * 2.0)
+                    .absolute(cx - glow_r, cy - glow_r)
+                    .radius(glow_r)
+                    .fill(color.alpha(0.22)),
+            )
+            .child(
+                el().size(r * 2.0, r * 2.0)
+                    .absolute(cx - r, cy - r)
+                    .radius(r)
+                    .fill(color),
+            ),
+        None => el().key("swatch").size(64.0, 40.0).radius(6.0).fill(color),
     }
 }
 
