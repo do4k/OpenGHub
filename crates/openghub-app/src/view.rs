@@ -82,7 +82,11 @@ pub(crate) fn cards_grid(s: &State, p: Paint, scale: f32) -> El {
     if s.cards.is_empty() {
         empty_state(p)
     } else {
-        let mut r = row().key("cards").gap(space::S3).flex_wrap();
+        let mut r = row()
+            .key("cards")
+            .gap(space::S3)
+            .flex_wrap()
+            .justify_center();
         for (i, card) in s.cards.iter().enumerate() {
             r = r.child(card_tile(p, i, card, s.images.as_ref(), scale));
         }
