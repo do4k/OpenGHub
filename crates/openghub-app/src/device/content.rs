@@ -494,6 +494,24 @@ pub(crate) fn apply_rgb_effect(s: &mut State, card: usize, effect: RgbEffect) {
     });
 }
 
+/// EQ presets in the spirit of G HUB (10-band dB shapes). The active pill
+/// is derived by comparing the stored levels, so a hand-tweaked curve
+/// reads as "Custom" without extra persisted state.
+#[cfg(unix)]
+pub(crate) const EQ_PRESETS: [(&str, [i32; 10]); 3] = [
+    ("Flat", [0; 10]),
+    ("Bass Boost", [6, 5, 4, 3, 2, 1, 0, 0, 0, 0]),
+    ("Treble Boost", [0, 0, 0, 0, 1, 2, 3, 4, 5, 6]),
+];
+
+/// Index of the preset matching `levels`, or `None` (→ "Custom").
+#[cfg(unix)]
+pub(crate) fn match_eq_preset(levels: &[i32]) -> Option<usize> {
+    EQ_PRESETS
+        .iter()
+        .position(|(_, preset)| preset.as_slice() == levels)
+}
+
 #[cfg(unix)]
 pub(crate) fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint) -> El {
     let t = p.t;
@@ -570,6 +588,44 @@ pub(crate) fn headset_content(i: usize, ui: &HeadsetUi, section: usize, p: Paint
                         .font(type_::LABEL)
                         .color(t.text_secondary),
                 );
+                if eq.frequencies.len() == EQ_PRESETS[0].1.len() {
+                    let active = match_eq_preset(&eq.levels);
+                    let mut presets = row().key("eq-presets").gap(space::S2).flex_wrap();
+                    for (k, (name, preset)) in EQ_PRESETS.iter().enumerate() {
+                        let preset = *preset;
+                        presets = presets.child(pill(
+                            p,
+                            format!("preset-{k}"),
+                            name,
+                            active == Some(k),
+                            move |s: &mut State| {
+                                let serial = s.cards[i].serial.clone();
+                                let (h, ui) = s.cards[i].headset_mut();
+                                if let Some(eq) = &mut ui.eq {
+                                    let levels: Vec<i32> = preset
+                                        .iter()
+                                        .map(|&v| v.clamp(eq.min_db, eq.max_db))
+                                        .collect();
+                                    eq.levels = levels.clone();
+                                    let h = h.clone();
+                                    let key = format!("{serial}/eq");
+                                    debounce(key, async move {
+                                        let _ = h.set_eq_levels(&levels).await;
+                                        persist(&serial, |st| st.equalizer_levels = Some(levels));
+                                    });
+                                }
+                            },
+                        ));
+                    }
+                    presets = presets.child(pill(
+                        p,
+                        "preset-custom",
+                        "Custom",
+                        active.is_none(),
+                        |_s: &mut State| {},
+                    ));
+                    c = c.child(presets.pt(space::S2));
+                }
                 let mut bands = col().key("bands").gap(space::S1).pt(space::S3);
                 for (j, &freq) in eq.frequencies.iter().enumerate() {
                     let value = eq.levels[j] as f32;
@@ -1002,5 +1058,28 @@ pub(crate) fn freq_label(hz: i32) -> String {
         format!("{} kHz", hz as f32 / 1000.0)
     } else {
         format!("{hz} Hz")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::match_eq_preset;
+
+    #[test]
+    fn flat_and_boosts_match_their_presets() {
+        assert_eq!(match_eq_preset(&[0; 10]), Some(0));
+        assert_eq!(match_eq_preset(&[6, 5, 4, 3, 2, 1, 0, 0, 0, 0]), Some(1));
+        assert_eq!(match_eq_preset(&[0, 0, 0, 0, 1, 2, 3, 4, 5, 6]), Some(2));
+    }
+
+    #[test]
+    fn hand_tweaked_is_custom() {
+        assert_eq!(match_eq_preset(&[1, 0, 0, 0, 0, 0, 0, 0, 0, 1]), None);
+    }
+
+    #[test]
+    fn wrong_band_count_never_matches() {
+        assert_eq!(match_eq_preset(&[0; 5]), None);
+        assert_eq!(match_eq_preset(&[]), None);
     }
 }
