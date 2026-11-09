@@ -487,7 +487,11 @@ fn mouse_preview(s: &State, i: usize, color: Color, scale: f32) -> El {
         .flatten()
         .map(|im| im.svg(card.art, 200.0, scale));
     let (w, h) = (240.0, 276.0);
-    let (cx, cy, r) = (114.0 / 200.0 * w, 160.0 / 230.0 * h, 18.0 / 200.0 * w);
+    // SVG viewBox is 200×230; the G logo is a large-arc stroke. The chord
+    // midpoint is (114, 160), but the arc's actual center is (122.2, 160)
+    // per SVG F.6.5 (half-chord 14, r 20) — placing the dot at the
+    // midpoint visibly misses the ring.
+    let (cx, cy, r) = (122.2 / 200.0 * w, 160.0 / 230.0 * h, 18.0 / 200.0 * w);
     let glow_r = r * 1.45;
     match image {
         Some(image) => el()
