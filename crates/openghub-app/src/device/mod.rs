@@ -198,6 +198,18 @@ pub(crate) fn sections(card: &Card) -> Vec<(&'static str, &'static str)> {
     }
 }
 
+/// True while the selected page is the mouse LIGHTSYNC section showing a
+/// Cycle/Breathe effect — the LED preview animates until the user leaves.
+#[cfg(unix)]
+pub(crate) fn led_animating(s: &State) -> bool {
+    let Some(i) = s.selected else {
+        return false;
+    };
+    let card = &s.cards[i];
+    card.selected_section == 2
+        && matches!(&card.device, Device::Mouse(_, ui) if ui.effect != RgbEffect::Static)
+}
+
 #[cfg(unix)]
 pub(crate) fn display_name(name: &str) -> String {
     name.to_uppercase()

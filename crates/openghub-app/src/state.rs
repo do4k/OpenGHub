@@ -17,6 +17,8 @@ pub(crate) struct State {
     pub(crate) preview_pending: Option<Image>,
     #[cfg(unix)]
     pub(crate) preview_seq: u64,
+    /// Latest frame clock from `poll`; drives LED preview animation.
+    pub(crate) clock: f64,
 }
 
 #[derive(Clone, Copy)]
