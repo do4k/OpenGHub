@@ -10,3 +10,10 @@ pub struct V4l2Format {
     pub bytes_per_line: i32,
     pub size_image: i32,
 }
+
+/// A pixel format a capture node offers (`v4l2_fmtdesc`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormatInfo {
+    pub pixel_format: u32,
+    pub description: String,
+}

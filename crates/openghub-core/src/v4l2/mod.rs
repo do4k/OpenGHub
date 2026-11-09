@@ -6,7 +6,7 @@
 pub mod format;
 pub mod mapped_buffer;
 
-pub use format::V4l2Format;
+pub use format::{FormatInfo, V4l2Format};
 pub use mapped_buffer::MappedBuffer;
 
 use std::io;
@@ -71,6 +71,21 @@ const VIDIOC_QUERYCTRL: u64 = vidioc(IOC_READ | IOC_WRITE, 36, SIZEOF_QUERYCTRL)
 
 const VIDIOC_G_FMT: u64 = vidioc(IOC_READ, 4, SIZEOF_FORMAT);
 const VIDIOC_S_FMT: u64 = vidioc(IOC_READ | IOC_WRITE, 5, SIZEOF_FORMAT);
+
+// Mode enumeration struct sizes (linux/videodev2.h: the unions are the
+// 24-byte stepwise forms).
+const SIZEOF_FMTDESC: u32 = 64;
+const SIZEOF_FRMSIZEENUM: u32 = 44;
+const SIZEOF_FRMIVALENUM: u32 = 52;
+const SIZEOF_STREAMPARM: u32 = 204;
+
+const VIDIOC_ENUM_FMT: u64 = vidioc(IOC_READ | IOC_WRITE, 2, SIZEOF_FMTDESC);
+const VIDIOC_S_PARM: u64 = vidioc(IOC_READ | IOC_WRITE, 22, SIZEOF_STREAMPARM);
+const VIDIOC_ENUM_FRAMESIZES: u64 = vidioc(IOC_READ | IOC_WRITE, 74, SIZEOF_FRMSIZEENUM);
+const VIDIOC_ENUM_FRAMEINTERVALS: u64 = vidioc(IOC_READ | IOC_WRITE, 75, SIZEOF_FRMIVALENUM);
+
+const FRMSIZE_DISCRETE: u32 = 1;
+const FRMIVAL_DISCRETE: u32 = 1;
 const VIDIOC_REQBUFS: u64 = vidioc(IOC_READ | IOC_WRITE, 8, SIZEOF_REQUESTBUFFERS);
 const VIDIOC_QUERYBUF: u64 = vidioc(IOC_READ | IOC_WRITE, 9, SIZEOF_BUFFER);
 const VIDIOC_QBUF: u64 = vidioc(IOC_READ | IOC_WRITE, 15, SIZEOF_BUFFER);
@@ -181,6 +196,93 @@ impl V4l2Device {
         put_u32(&mut buf, 16, pixel_format);
         self.ioctl(VIDIOC_S_FMT, &mut buf)?;
         Ok(parse_format(&buf))
+    }
+
+    /// Lists the pixel formats the driver offers for video capture.
+    ///
+    /// Iteration ends on the first `EINVAL` (the documented end-of-list
+    /// signal); any other error aborts the enumeration.
+    pub fn enumerate_formats(&self) -> Result<Vec<FormatInfo>, Error> {
+        let mut out = Vec::new();
+        for index in 0..16u32 {
+            let mut buf = vec![0u8; SIZEOF_FMTDESC as usize];
+            put_u32(&mut buf, 0, index);
+            put_u32(&mut buf, 4, BUF_TYPE_VIDEO_CAPTURE);
+            match self.ioctl(VIDIOC_ENUM_FMT, &mut buf) {
+                Ok(()) => out.push(FormatInfo {
+                    pixel_format: get_u32(&buf, 44),
+                    description: cstring(&buf, 12, 32),
+                }),
+                Err(crate::error::Error::Io(e)) if e.kind() == std::io::ErrorKind::InvalidInput => {
+                    break;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Lists the discrete frame sizes offered for one pixel format.
+    pub fn enumerate_frame_sizes(&self, pixel_format: u32) -> Result<Vec<(i32, i32)>, Error> {
+        let mut out = Vec::new();
+        for index in 0..32u32 {
+            let mut buf = vec![0u8; SIZEOF_FRMSIZEENUM as usize];
+            put_u32(&mut buf, 0, index);
+            put_u32(&mut buf, 4, pixel_format);
+            match self.ioctl(VIDIOC_ENUM_FRAMESIZES, &mut buf) {
+                Ok(()) => {
+                    if get_u32(&buf, 8) != FRMSIZE_DISCRETE {
+                        continue;
+                    }
+                    out.push((get_i32(&buf, 12), get_i32(&buf, 16)));
+                }
+                Err(crate::error::Error::Io(e)) if e.kind() == std::io::ErrorKind::InvalidInput => {
+                    break;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Lists the discrete frame intervals (numerator, denominator) offered
+    /// for one size. The frame rate is `denominator / numerator` fps.
+    pub fn enumerate_frame_intervals(
+        &self,
+        pixel_format: u32,
+        width: i32,
+        height: i32,
+    ) -> Result<Vec<(u32, u32)>, Error> {
+        let mut out = Vec::new();
+        for index in 0..32u32 {
+            let mut buf = vec![0u8; SIZEOF_FRMIVALENUM as usize];
+            put_u32(&mut buf, 0, index);
+            put_u32(&mut buf, 4, pixel_format);
+            put_u32(&mut buf, 8, width as u32);
+            put_u32(&mut buf, 12, height as u32);
+            match self.ioctl(VIDIOC_ENUM_FRAMEINTERVALS, &mut buf) {
+                Ok(()) => {
+                    if get_u32(&buf, 16) != FRMIVAL_DISCRETE {
+                        continue;
+                    }
+                    out.push((get_u32(&buf, 20), get_u32(&buf, 24)));
+                }
+                Err(crate::error::Error::Io(e)) if e.kind() == std::io::ErrorKind::InvalidInput => {
+                    break;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Sets the frame interval (seconds per frame = `numerator/denominator`).
+    pub fn set_frame_interval(&self, numerator: u32, denominator: u32) -> Result<(), Error> {
+        let mut buf = vec![0u8; SIZEOF_STREAMPARM as usize];
+        put_u32(&mut buf, 0, BUF_TYPE_VIDEO_CAPTURE);
+        put_u32(&mut buf, 12, numerator);
+        put_u32(&mut buf, 16, denominator);
+        self.ioctl(VIDIOC_S_PARM, &mut buf)
     }
 
     /// Reads the currently negotiated capture format.

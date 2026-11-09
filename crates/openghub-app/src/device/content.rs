@@ -9,6 +9,7 @@ use crate::app::{RT, persist};
 use crate::debounce::debounce;
 use crate::state::{Paint, State};
 use crate::widgets::{chip, dpi_track, labeled_slider, pill, radio, slider, toggle_row};
+use openghub_core::devices::camera;
 
 /// G HUB-style large section heading.
 #[cfg(unix)]
@@ -508,6 +509,22 @@ fn mouse_preview(s: &State, i: usize, color: Color, scale: f32) -> El {
             ),
         None => el().key("swatch").size(64.0, 40.0).radius(6.0).fill(color),
     }
+}
+
+/// Applies the selected video mode: stores it as the preview's preferred
+/// mode and restarts the stream (poll starts it again on the next frame).
+#[cfg(unix)]
+pub(crate) fn apply_video_mode(s: &mut State, i: usize) {
+    let (preview, sel_mode, fmt) = {
+        let (_, ui) = s.cards[i].camera_mut();
+        let fmt = ui.video.as_ref().map(|v| v.pixel_format).unwrap_or(0);
+        (ui.preview.clone(), ui.sel_mode, fmt)
+    };
+    let Some((w, h, num, den)) = sel_mode else {
+        return;
+    };
+    preview.set_preferred_mode(w, h, num, den, fmt);
+    preview.stop();
 }
 
 #[cfg(unix)]
@@ -1016,12 +1033,102 @@ pub(crate) fn camera_content(
             .filter(|c| image_adjustments(&c.name))
             .collect(),
         _ => {
-            return stub_content(
-                p,
-                "Video",
-                "Frame rate, field of view, shutter speed, ISO and HDR are hardware/encoder settings that Windows-only G HUB drives through its own camera plugin. On Linux, V4L2 exposes the capture and image controls on the other tabs; this tab mirrors G HUB's spec surface.",
-                &["FOV", "Shutter Speed", "ISO", "HDR"],
+            // G HUB's Video tab is resolution + frame rate. Field of view
+            // is the Zoom slider (CAMERA tab); shutter speed and ISO are
+            // Windows-plugin features this hardware doesn't expose on Linux.
+            let t = p.t;
+            let mut c = col().key("video").gap(space::S3);
+            c = c.child(text("Video").key("title").font(heading()).color(t.text));
+            let Some(video) = ui.video.clone() else {
+                c = c.child(
+                    text("This driver reported no video modes.")
+                        .key("note")
+                        .font(type_::LABEL)
+                        .color(t.text_secondary),
+                );
+                return c;
+            };
+            let sel = ui.sel_mode.unwrap_or_default();
+            c = c.child(
+                text("Resolution")
+                    .key("res-title")
+                    .font(type_::SECTION)
+                    .color(t.text),
             );
+            let mut res = row().key("res").gap(space::S2).flex_wrap();
+            for size in &video.sizes {
+                let label = format!("{}×{}", size.width, size.height);
+                let active = (sel.0, sel.1) == (size.width, size.height);
+                let width = size.width;
+                let height = size.height;
+                res = res.child(pill(
+                    p,
+                    format!("res-{width}x{height}"),
+                    &label,
+                    active,
+                    move |s: &mut State| {
+                        let (_, ui) = s.cards[i].camera_mut();
+                        let intervals = ui
+                            .video
+                            .as_ref()
+                            .and_then(|v| {
+                                v.sizes
+                                    .iter()
+                                    .find(|sz| (sz.width, sz.height) == (width, height))
+                            })
+                            .map(|sz| sz.intervals.clone())
+                            .unwrap_or_default();
+                        let (num, den) = intervals.first().copied().unwrap_or((1, 30));
+                        ui.sel_mode = Some((width, height, num, den));
+                        apply_video_mode(s, i);
+                    },
+                ));
+            }
+            c = c.child(res);
+            c = c.child(
+                text("Frame rate")
+                    .key("fps-title")
+                    .font(type_::SECTION)
+                    .color(t.text)
+                    .pt(space::S3),
+            );
+            let intervals = video
+                .sizes
+                .iter()
+                .find(|sz| (sz.width, sz.height) == (sel.0, sel.1))
+                .map(|sz| sz.intervals.clone())
+                .unwrap_or_default();
+            let mut fps_row = row().key("fps").gap(space::S2).flex_wrap();
+            for (k, &(num, den)) in intervals.iter().enumerate() {
+                let rate = camera::fps_of(num, den);
+                let label = if rate.fract() == 0.0 {
+                    format!("{rate:.0} fps")
+                } else {
+                    format!("{rate:.1} fps")
+                };
+                fps_row = fps_row.child(pill(
+                    p,
+                    format!("fps-{k}"),
+                    &label,
+                    (sel.2, sel.3) == (num, den),
+                    move |s: &mut State| {
+                        let (_, ui) = s.cards[i].camera_mut();
+                        let (w, h, _, _) = ui.sel_mode.unwrap_or_default();
+                        ui.sel_mode = Some((w, h, num, den));
+                        apply_video_mode(s, i);
+                    },
+                ));
+            }
+            c = c.child(fps_row);
+            c = c.child(
+                text("Applies immediately — the preview restarts at the new mode. Field of view is the Zoom slider on the CAMERA tab; shutter speed/ISO are G HUB-plugin features this device doesn't expose on Linux.")
+                    .key("note")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary)
+                    .wrap()
+                    .pt(space::S3),
+            );
+            return c;
         }
     };
 
