@@ -12,7 +12,7 @@ use crate::widgets::{chip, dpi_track, labeled_slider, pill, radio, slider, toggl
 
 /// G HUB-style large section heading.
 #[cfg(unix)]
-const fn heading() -> TextStyle {
+pub(crate) const fn heading() -> TextStyle {
     TextStyle::new(18.0, 400.0)
 }
 #[cfg(unix)]
@@ -393,12 +393,7 @@ pub(crate) fn mouse_content(
             )));
             c
         }
-        1 => stub_content(
-            p,
-            "Assignments",
-            "Receiver-connected units don't expose button remapping over HID++ (0x1b04 comes back empty), so Assignments stays a stub.",
-            &["DPI Switch", "Left Button", "Right Button"],
-        ),
+        1 => crate::device::assign::assignments_view(s, i, p, scale),
         _ => {
             let t = p.t;
             let (r, g, b) = (ui.rgb[0], ui.rgb[1], ui.rgb[2]);

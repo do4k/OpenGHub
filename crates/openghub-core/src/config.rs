@@ -13,6 +13,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
+/// A named macro as stored on disk: `steps` is a plain-text program
+/// (`kd:30,kt:30,ku:30,d:50`); `behavior` is `once`, `repeat_hold`, or
+/// `toggle`. The executor lives in the assignment engine (#15).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MacroRecord {
+    pub name: String,
+    pub behavior: String,
+    pub steps: String,
+}
+
 /// Last-known state of a single device, keyed by serial number in
 /// [`ConfigStore`]. Litra lights can't report their current brightness, color
 /// temperature, or power state back over USB, so Open G Hub remembers the last
@@ -34,6 +44,18 @@ pub struct DeviceState {
     pub blue: u8,
     #[serde(rename = "button_remaps")]
     pub button_remaps: Option<HashMap<u16, u16>>,
+    /// Assignment bindings `"button:layer" -> action` (`layer` 0 = base,
+    /// 1 = G-Shift; action e.g. `key:E`, `cmd:Ctrl+C`, `sys:DPI Cycle`,
+    /// `macro:Name`).
+    #[serde(rename = "button_bindings")]
+    pub button_bindings: Option<HashMap<String, String>>,
+    /// The physical button acting as the G-Shift modifier (1-based).
+    #[serde(rename = "gshift_button")]
+    pub gshift_button: Option<u8>,
+    #[serde(rename = "gshift_enabled")]
+    pub gshift_enabled: bool,
+    #[serde(rename = "macros")]
+    pub macros: Option<Vec<MacroRecord>>,
     pub sidetone: i32,
     #[serde(rename = "equalizer_levels")]
     pub equalizer_levels: Option<Vec<i32>>,
