@@ -4,4 +4,5 @@ members = [
     "crates/openghub-core",
     "crates/openghub-poc",
     "crates/openghub-app",
+    "crates/openghub-cli",
 ]

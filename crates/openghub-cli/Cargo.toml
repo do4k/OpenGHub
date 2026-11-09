@@ -1,0 +1,8 @@
+[package]
+name = "openghub-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+openghub-core = { path = "../openghub-core" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }

@@ -39,6 +39,13 @@ the sections a device supports appear. Button remapping (`REPROG_CONTROLS`)
 stays a stub on the receiver-connected G Pro Wireless — that firmware
 exposes no `0x1b04` feature, and the uinput emission layer isn't wired up.
 
+## Current UI
+
+The mouse Sensitivity screen as it currently ships — G HUB-style DPI
+track, report-rate radios, and restore defaults:
+
+![Open G Hub mouse Sensitivity screen](img/Screenshot.png)
+
 ## Capability matrix
 
 What G HUB does vs what Open G Hub does today. 🔜 = tracked in a GitHub

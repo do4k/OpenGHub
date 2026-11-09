@@ -2023,6 +2023,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "openghub-cli"
+version = "0.1.0"
+dependencies = [
+ "openghub-core",
+ "tokio",
+]
+
+[[package]]
 name = "openghub-core"
 version = "0.1.0"
 dependencies = [
