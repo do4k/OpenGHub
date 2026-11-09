@@ -130,6 +130,28 @@ pub(crate) struct LitraUi {
 pub(crate) struct CameraUi {
     controls: Vec<CamControl>,
     preview: Arc<camera::WebcamPreview>,
+    /// Discrete video modes (sizes + frame intervals) the driver offers.
+    /// `None` when the driver reported none.
+    video: Option<VideoState>,
+    /// Selected mode (width, height, interval num/den) applied to the preview.
+    sel_mode: Option<(i32, i32, u32, u32)>,
+}
+
+/// App-facing view of the driver-side [`camera::VideoInfo`]: the preferred
+/// format's discrete sizes, each with its offered frame intervals.
+#[derive(Clone)]
+pub(crate) struct VideoState {
+    pub pixel_format: u32,
+    pub sizes: Vec<VideoSize>,
+}
+
+/// Mirrors [`camera::VideoSize`] (their interface keeps `camera::` types
+/// out of the UI layer's public surface).
+#[derive(Clone)]
+pub(crate) struct VideoSize {
+    pub width: i32,
+    pub height: i32,
+    pub intervals: Vec<(u32, u32)>,
 }
 
 #[cfg(unix)]
@@ -139,6 +161,7 @@ pub(crate) struct CamControl {
     max: i32,
     step: i32,
     value: i32,
+    default: i32,
     is_bool: bool,
 }
 
@@ -555,11 +578,38 @@ pub(crate) fn camera_card(c: camera::V4l2Camera) -> Card {
                 max: ctl.max,
                 step: ctl.step,
                 value,
+                default: ctl.default,
                 is_bool,
             }
         })
         .collect();
     let preview = Arc::new(c.create_preview());
+    // Enumerate video modes (MJPEG → YUYV → first) for the Video tab.
+    let video = openghub_core::v4l2::V4l2Device::open(c.device_path())
+        .ok()
+        .and_then(|d| camera::list_video_modes(&d).ok()?)
+        .map(|info| VideoState {
+            pixel_format: info.pixel_format,
+            sizes: info
+                .sizes
+                .into_iter()
+                .map(|s| VideoSize {
+                    width: s.width,
+                    height: s.height,
+                    intervals: s.intervals,
+                })
+                .collect(),
+        });
+    // Default: the preview's classic 640x480 size at its fastest rate.
+    let sel_mode = video.as_ref().and_then(|v| {
+        let size = v
+            .sizes
+            .iter()
+            .find(|s| (s.width, s.height) == (camera::PREVIEW_WIDTH, camera::PREVIEW_HEIGHT))
+            .or_else(|| v.sizes.first())?;
+        let (num, den) = size.intervals.first().copied()?;
+        Some((size.width, size.height, num, den))
+    });
     Card {
         name: c.name().to_string(),
         subtitle,
@@ -567,7 +617,15 @@ pub(crate) fn camera_card(c: camera::V4l2Camera) -> Card {
         status: "Connected".to_string(),
         art: ART_WEBCAM,
         selected_section: 0,
-        device: Device::Camera(Arc::new(c), CameraUi { controls, preview }),
+        device: Device::Camera(
+            Arc::new(c),
+            CameraUi {
+                controls,
+                preview,
+                video,
+                sel_mode,
+            },
+        ),
     }
 }
 #[cfg(unix)]

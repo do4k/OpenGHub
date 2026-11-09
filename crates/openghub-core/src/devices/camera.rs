@@ -254,6 +254,72 @@ pub const PREVIEW_HEIGHT: i32 = 480;
 
 const PREVIEW_BUFFER_COUNT: i32 = 4;
 
+/// One discrete capture mode: a frame size and the frame intervals
+/// (numerator, denominator) the driver offers for it. Frame rate in fps is
+/// `denominator / numerator`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoSize {
+    pub width: i32,
+    pub height: i32,
+    pub intervals: Vec<(u32, u32)>,
+}
+
+/// The video modes a capture node offers in one pixel format.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoInfo {
+    pub pixel_format: u32,
+    pub sizes: Vec<VideoSize>,
+}
+
+/// Enumerates the modes offered by a capture node, preferring MJPEG, then
+/// YUYV, then whatever comes first. `None` when the device lists no sizes.
+pub fn list_video_modes(dev: &crate::v4l2::V4l2Device) -> Result<Option<VideoInfo>, Error> {
+    let formats = dev.enumerate_formats()?;
+    let pick = formats
+        .iter()
+        .find(|f| f.pixel_format == PIX_FMT_MJPEG)
+        .or_else(|| formats.iter().find(|f| f.pixel_format == PIX_FMT_YUYV))
+        .or_else(|| formats.first());
+    let Some(format) = pick else {
+        return Ok(None);
+    };
+    let mut sizes = Vec::new();
+    for (w, h) in dev.enumerate_frame_sizes(format.pixel_format)? {
+        let intervals = dev.enumerate_frame_intervals(format.pixel_format, w, h)?;
+        sizes.push(VideoSize {
+            width: w,
+            height: h,
+            intervals,
+        });
+    }
+    if sizes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(VideoInfo {
+        pixel_format: format.pixel_format,
+        sizes,
+    }))
+}
+
+/// The frame interval currently published, in fps (0s mean unknown).
+pub fn fps_of(numerator: u32, denominator: u32) -> f64 {
+    if numerator == 0 {
+        0.0
+    } else {
+        denominator as f64 / numerator as f64
+    }
+}
+
+/// A stored stream preference: frame size + interval + pixel format.
+#[derive(Clone, Copy)]
+struct ModePref {
+    width: i32,
+    height: i32,
+    numerator: u32,
+    denominator: u32,
+    pixel_format: u32,
+}
+
 #[derive(Default)]
 struct PreviewState {
     running: bool,
@@ -273,6 +339,7 @@ pub struct WebcamPreview {
     name: String,
     state: Arc<Mutex<PreviewState>>,
     capture: Mutex<Option<JoinHandle<()>>>,
+    preferred: Mutex<Option<ModePref>>,
 }
 
 impl WebcamPreview {
@@ -282,20 +349,45 @@ impl WebcamPreview {
             name,
             state: Arc::new(Mutex::new(PreviewState::default())),
             capture: Mutex::new(None),
+            preferred: Mutex::new(None),
         }
     }
 
-    /// Starts streaming; a second call while running is a no-op.
+    /// Stores a stream preference (frame size + interval + pixel format)
+    /// applied by the next [`Self::start`]. Call `stop` first to restart.
+    pub fn set_preferred_mode(
+        &self,
+        width: i32,
+        height: i32,
+        numerator: u32,
+        denominator: u32,
+        pixel_format: u32,
+    ) {
+        *self.preferred.lock().unwrap() = Some(ModePref {
+            width,
+            height,
+            numerator,
+            denominator,
+            pixel_format,
+        });
+    }
+
+    /// Starts streaming; a second call while running is a no-op. When a
+    /// preferred mode was stored with [`Self::set_preferred_mode`], the
+    /// stream negotiates that size and frame interval instead of the
+    /// preview default.
     pub fn start(&self, pixel_format: u32) -> Result<(), Error> {
         let mut st = self.state.lock().unwrap();
         if st.running {
             return Ok(());
         }
 
-        let format = match self
-            .dev
-            .set_format(PREVIEW_WIDTH, PREVIEW_HEIGHT, pixel_format)
-        {
+        let pref = *self.preferred.lock().unwrap();
+        let (width, height, pixel_format) = match pref {
+            Some(m) => (m.width, m.height, m.pixel_format),
+            None => (PREVIEW_WIDTH, PREVIEW_HEIGHT, pixel_format),
+        };
+        let format = match self.dev.set_format(width, height, pixel_format) {
             Ok(f) => f,
             Err(Error::Io(_)) => {
                 // Some drivers (notably PipeWire's shim) reject SetFormat but
@@ -304,6 +396,11 @@ impl WebcamPreview {
             }
             Err(e) => return Err(e),
         };
+        // Frame interval is best-effort: drivers that ignore S_PARM keep
+        // whatever rate they negotiate.
+        if let Some(m) = pref {
+            let _ = self.dev.set_frame_interval(m.numerator, m.denominator);
+        }
 
         match format.pixel_format {
             PIX_FMT_MJPEG | PIX_FMT_YUYV => {}

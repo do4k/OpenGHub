@@ -9,6 +9,7 @@ use crate::app::{RT, persist};
 use crate::debounce::debounce;
 use crate::state::{Paint, State};
 use crate::widgets::{chip, dpi_track, labeled_slider, pill, radio, slider, toggle_row};
+use openghub_core::devices::camera;
 
 /// G HUB-style large section heading.
 #[cfg(unix)]
@@ -508,6 +509,22 @@ fn mouse_preview(s: &State, i: usize, color: Color, scale: f32) -> El {
             ),
         None => el().key("swatch").size(64.0, 40.0).radius(6.0).fill(color),
     }
+}
+
+/// Applies the selected video mode: stores it as the preview's preferred
+/// mode and restarts the stream (poll starts it again on the next frame).
+#[cfg(unix)]
+pub(crate) fn apply_video_mode(s: &mut State, i: usize) {
+    let (preview, sel_mode, fmt) = {
+        let (_, ui) = s.cards[i].camera_mut();
+        let fmt = ui.video.as_ref().map(|v| v.pixel_format).unwrap_or(0);
+        (ui.preview.clone(), ui.sel_mode, fmt)
+    };
+    let Some((w, h, num, den)) = sel_mode else {
+        return;
+    };
+    preview.set_preferred_mode(w, h, num, den, fmt);
+    preview.stop();
 }
 
 #[cfg(unix)]
@@ -1016,24 +1033,120 @@ pub(crate) fn camera_content(
             .filter(|c| image_adjustments(&c.name))
             .collect(),
         _ => {
-            return stub_content(
-                p,
-                "Video",
-                "Frame rate, field of view, shutter speed, ISO and HDR are hardware/encoder settings that Windows-only G HUB drives through its own camera plugin. On Linux, V4L2 exposes the capture and image controls on the other tabs; this tab mirrors G HUB's spec surface.",
-                &["FOV", "Shutter Speed", "ISO", "HDR"],
+            // G HUB's Video tab is resolution + frame rate. Field of view
+            // is the Zoom slider (CAMERA tab); shutter speed and ISO are
+            // Windows-plugin features this hardware doesn't expose on Linux.
+            let t = p.t;
+            let mut c = col().key("video").gap(space::S3);
+            c = c.child(text("Video").key("title").font(heading()).color(t.text));
+            let Some(video) = ui.video.clone() else {
+                c = c.child(
+                    text("This driver reported no video modes.")
+                        .key("note")
+                        .font(type_::LABEL)
+                        .color(t.text_secondary),
+                );
+                return c;
+            };
+            let sel = ui.sel_mode.unwrap_or_default();
+            c = c.child(
+                text("Resolution")
+                    .key("res-title")
+                    .font(type_::SECTION)
+                    .color(t.text),
             );
+            let mut res = row().key("res").gap(space::S2).flex_wrap();
+            for size in &video.sizes {
+                let label = format!("{}×{}", size.width, size.height);
+                let active = (sel.0, sel.1) == (size.width, size.height);
+                let width = size.width;
+                let height = size.height;
+                res = res.child(pill(
+                    p,
+                    format!("res-{width}x{height}"),
+                    &label,
+                    active,
+                    move |s: &mut State| {
+                        let (_, ui) = s.cards[i].camera_mut();
+                        let intervals = ui
+                            .video
+                            .as_ref()
+                            .and_then(|v| {
+                                v.sizes
+                                    .iter()
+                                    .find(|sz| (sz.width, sz.height) == (width, height))
+                            })
+                            .map(|sz| sz.intervals.clone())
+                            .unwrap_or_default();
+                        let (num, den) = intervals.first().copied().unwrap_or((1, 30));
+                        ui.sel_mode = Some((width, height, num, den));
+                        apply_video_mode(s, i);
+                    },
+                ));
+            }
+            c = c.child(res);
+            c = c.child(
+                text("Frame rate")
+                    .key("fps-title")
+                    .font(type_::SECTION)
+                    .color(t.text)
+                    .pt(space::S3),
+            );
+            let intervals = video
+                .sizes
+                .iter()
+                .find(|sz| (sz.width, sz.height) == (sel.0, sel.1))
+                .map(|sz| sz.intervals.clone())
+                .unwrap_or_default();
+            let mut fps_row = row().key("fps").gap(space::S2).flex_wrap();
+            for (k, &(num, den)) in intervals.iter().enumerate() {
+                let rate = camera::fps_of(num, den);
+                let label = if rate.fract() == 0.0 {
+                    format!("{rate:.0} fps")
+                } else {
+                    format!("{rate:.1} fps")
+                };
+                fps_row = fps_row.child(pill(
+                    p,
+                    format!("fps-{k}"),
+                    &label,
+                    (sel.2, sel.3) == (num, den),
+                    move |s: &mut State| {
+                        let (_, ui) = s.cards[i].camera_mut();
+                        let (w, h, _, _) = ui.sel_mode.unwrap_or_default();
+                        ui.sel_mode = Some((w, h, num, den));
+                        apply_video_mode(s, i);
+                    },
+                ));
+            }
+            c = c.child(fps_row);
+            c = c.child(
+                text("Applies immediately — the preview restarts at the new mode. Field of view is the Zoom slider on the CAMERA tab; shutter speed/ISO are G HUB-plugin features this device doesn't expose on Linux.")
+                    .key("note")
+                    .font(type_::LABEL)
+                    .color(t.text_secondary)
+                    .wrap()
+                    .pt(space::S3),
+            );
+            return c;
         }
     };
 
     let mut c = col().key("camera").gap(space::S2);
     match section {
         0 => {
-            c = c.child(text("Camera").key("title").font(heading()).color(t.text));
             c = c.child(
-                text("Focus, expose and frame your shot.")
-                    .key("desc")
-                    .font(type_::LABEL)
-                    .color(t.text_secondary),
+                el().w_full()
+                    .center()
+                    .child(text("Streaming").key("title").font(heading()).color(t.text)),
+            );
+            c = c.child(
+                el().w_full().center().child(
+                    text("Pan and tilt with the arrows; adjust zoom, focus and exposure below.")
+                        .key("desc")
+                        .font(type_::LABEL)
+                        .color(t.text_secondary),
+                ),
             );
         }
         2 => {
@@ -1048,31 +1161,19 @@ pub(crate) fn camera_content(
         _ => {}
     }
     if section == 0 {
-        c = c.child(match preview {
-            Some(image) => el()
-                .key("preview")
-                .size(480.0, 360.0)
-                .radius(8.0)
-                .pixels_fit(image.pixels(), SurfaceFit::Fit),
-            None => el()
-                .key("preview")
-                .size(480.0, 360.0)
-                .radius(8.0)
-                .fill(Color::BLACK.alpha(0.3))
-                .child(
-                    text("preview")
-                        .key("ph")
-                        .font(type_::BODY)
-                        .color(t.text_secondary),
-                ),
-        });
+        c = c.child(
+            row()
+                .key("preview-row")
+                .justify_center()
+                .child(camera_preview(i, p, preview)),
+        );
         // Quick light switch: toggle any connected Litra right from the
         // preview, so the studio can be lit without leaving the camera page.
         if let Some(toggles) = litra_toggles(s, p) {
             c = c.child(toggles);
         }
     }
-    for ctl in selected {
+    for ctl in &selected {
         if ctl.is_bool {
             let name = ctl.name.clone();
             let key = name.clone();
@@ -1128,7 +1229,99 @@ pub(crate) fn camera_content(
             ));
         }
     }
+    // Restore all camera controls to the device's factory defaults.
+    if !selected.is_empty() {
+        c = c.child(
+            row()
+                .key("restore")
+                .justify_center()
+                .pt(space::S3)
+                .child(pill(
+                    p,
+                    "restore-camera",
+                    "Restore camera defaults",
+                    false,
+                    move |s: &mut State| {
+                        let (cam, ui) = s.cards[i].camera_mut();
+                        for ctl in &mut ui.controls {
+                            let v = ctl.default;
+                            if ctl.value != v {
+                                ctl.value = v;
+                                let cam = cam.clone();
+                                let n = ctl.name.clone();
+                                let _ = cam.set_control(&n, v);
+                            }
+                        }
+                    },
+                )),
+        );
+    }
     c
+}
+
+/// The 480×360 preview with G HUB's pan/tilt arrows on its edges.
+#[cfg(unix)]
+fn camera_preview(i: usize, p: Paint, preview: Option<&rune::Image>) -> El {
+    let t = p.t;
+    let shot = match preview {
+        Some(image) => el()
+            .key("preview")
+            .size(480.0, 360.0)
+            .radius(8.0)
+            .pixels_fit(image.pixels(), rune::SurfaceFit::Fit),
+        None => el()
+            .key("preview")
+            .size(480.0, 360.0)
+            .radius(8.0)
+            .fill(Color::BLACK.alpha(0.3))
+            .child(
+                text("preview")
+                    .key("ph")
+                    .font(type_::BODY)
+                    .color(t.text_secondary),
+            ),
+    };
+    let mut box_ = el().key("preview-box").size(480.0, 360.0).child(shot);
+    for (key, glyph, x, y) in [
+        ("pan-left", "◀", 6.0, 166.0),
+        ("pan-right", "▶", 446.0, 166.0),
+        ("tilt-up", "▲", 226.0, 6.0),
+        ("tilt-down", "▼", 226.0, 326.0),
+    ] {
+        let name = match key {
+            "pan-left" | "pan-right" => ("Pan", if key == "pan-left" { -1 } else { 1 }),
+            _ => ("Tilt", if key == "tilt-up" { 1 } else { -1 }),
+        };
+        box_ = box_.child(
+            row()
+                .key(key)
+                .role("button")
+                .label(key)
+                .size(28.0, 28.0)
+                .absolute(x, y)
+                .center()
+                .radius(14.0)
+                .fill(Color::BLACK.alpha(0.45))
+                .focusable(true)
+                .on_press(move |s: &mut State| nudge_camera(s, i, name.0, name.1))
+                .child(text(glyph).font(type_::LABEL).color(Color::WHITE)),
+        );
+    }
+    box_
+}
+
+/// Moves a discrete camera control (Pan/Tilt) by one device step.
+#[cfg(unix)]
+fn nudge_camera(s: &mut State, i: usize, name: &str, dir: i32) {
+    let (cam, ui) = s.cards[i].camera_mut();
+    if let Some(ctl) = ui.controls.iter_mut().find(|c| c.name == name) {
+        let step = ctl.step.max(1);
+        let v = (ctl.value + dir * step).clamp(ctl.min, ctl.max);
+        ctl.value = v;
+        let cam = cam.clone();
+        let n = ctl.name.clone();
+        let _ = cam.set_control(&n, v);
+    }
 }
 
 #[cfg(unix)]

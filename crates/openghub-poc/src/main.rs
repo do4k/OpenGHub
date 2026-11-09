@@ -73,6 +73,48 @@ async fn main() {
         );
     }
 
+    if has("--probe-video") {
+        for node in ["video0", "video1", "video2"] {
+            let path = format!("/dev/{node}");
+            let Ok(dev) = openghub_core::v4l2::V4l2Device::open(&path) else {
+                continue;
+            };
+            let formats = match dev.enumerate_formats() {
+                Ok(f) => f,
+                Err(e) => {
+                    println!("{path}: {e}");
+                    continue;
+                }
+            };
+            for f in formats {
+                let fourcc = f.pixel_format;
+                let desc = f.description;
+                let sizes = match dev.enumerate_frame_sizes(fourcc) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("{path}: sizes: {e}");
+                        continue;
+                    }
+                };
+                println!("{path}: format 0x{fourcc:08x} '{desc}' {}", sizes.len());
+                for (w, h) in sizes {
+                    match dev.enumerate_frame_intervals(fourcc, w, h) {
+                        Ok(iv) => {
+                            let fps: Vec<String> = iv
+                                .iter()
+                                .map(|(n, d)| format!("{:.2}", *d as f64 / *n as f64))
+                                .collect();
+                            println!("    {w}x{h}: [{}] fps", fps.join(", "));
+                        }
+                        Err(e) => println!("    {w}x{h}: intervals: {e}"),
+                    }
+                }
+            }
+        }
+        println!("Done.");
+        return;
+    }
+
     if has("--probe-sensors") {
         for d in backend.enumerate(VENDOR_ID, 0) {
             if d.product_id != 0x4079 {
