@@ -39,6 +39,13 @@ the sections a device supports appear. Button remapping (`REPROG_CONTROLS`)
 stays a stub on the receiver-connected G Pro Wireless — that firmware
 exposes no `0x1b04` feature, and the uinput emission layer isn't wired up.
 
+## Target UI
+
+For reference, this is the official Logitech G HUB Sensitivity screen —
+the layout Open G Hub aims to mirror:
+
+![Official Logitech G HUB Sensitivity screen (reference only)](img/Screenshot.png)
+
 ## Capability matrix
 
 What G HUB does vs what Open G Hub does today. 🔜 = tracked in a GitHub
