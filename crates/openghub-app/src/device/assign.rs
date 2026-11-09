@@ -6,13 +6,13 @@
 //! feature (#25), so bindings are stored locally until the engine lands
 //! (#15). The UI is honest about that.
 
-use rune::tok::{space, type_};
-use rune::{Color, El, text};
+use rune::tok::{radius, space, type_};
+use rune::{Color, El, row, text};
 
 use crate::app::persist;
 use crate::device::MouseUi;
 use crate::state::{Paint, State};
-use crate::widgets::{chip, pill, toggle_row};
+use crate::widgets::{pill, toggle_row};
 use openghub_core::config::MacroRecord;
 
 /// Physical buttons on the mouse, 1-based (MB1/MB2 = left/right click,
@@ -292,23 +292,34 @@ pub(crate) fn assignments_view(s: &State, i: usize, p: Paint, scale: f32) -> El 
     for (k, (label, action, note)) in items.iter().enumerate() {
         match note {
             Some(why) => {
-                col_items =
-                    col_items.child(chip(p, format!("item-{k}"), &format!("{label} ({why})")));
+                col_items = col_items.child(item_pill(
+                    p,
+                    format!("item-{k}"),
+                    &format!("{label} ({why})"),
+                    false,
+                    None,
+                ));
             }
             None => {
                 let is_pending = ui.pending_action.as_deref() == action.as_deref();
                 let action = std::sync::Arc::new(action.clone().unwrap_or_default());
-                col_items = col_items.child(pill(p, format!("item-{k}"), label, is_pending, {
-                    let action = std::sync::Arc::clone(&action);
-                    move |s: &mut State| {
-                        let (_, ui) = s.cards[i].mouse_mut();
-                        if ui.pending_action.as_deref() == Some(action.as_str()) {
-                            ui.pending_action = None;
-                        } else {
-                            ui.pending_action = Some((*action).to_string());
+                col_items = col_items.child(item_pill(
+                    p,
+                    format!("item-{k}"),
+                    label,
+                    is_pending,
+                    Some(Box::new({
+                        let action = std::sync::Arc::clone(&action);
+                        move |s: &mut State| {
+                            let (_, ui) = s.cards[i].mouse_mut();
+                            if ui.pending_action.as_deref() == Some(action.as_str()) {
+                                ui.pending_action = None;
+                            } else {
+                                ui.pending_action = Some((*action).to_string());
+                            }
                         }
-                    }
-                }));
+                    })),
+                ));
             }
         }
     }
@@ -369,6 +380,39 @@ pub(crate) fn assignments_view(s: &State, i: usize, p: Paint, scale: f32) -> El 
 /// The mouse diagram with clickable button hotspots. Each hotspot shows the
 /// button name + its binding for the currently viewed layer (a floating tag,
 /// per the canvas spec).
+/// A full-width library item. Long labels wrap instead of clipping.
+type PressFn = Box<dyn Fn(&mut State) + 'static>;
+
+fn item_pill(
+    p: Paint,
+    key: impl Into<String>,
+    label: &str,
+    active: bool,
+    press: Option<PressFn>,
+) -> El {
+    let mut row = row()
+        .key(key)
+        .w_full()
+        .px(space::S3)
+        .py(space::S2)
+        .radius(radius::MD)
+        .fill(if active { p.accent } else { p.t.card })
+        .child(
+            text(label)
+                .font(type_::LABEL)
+                .color(if active { Color::BLACK } else { p.t.text })
+                .wrap(),
+        );
+    if let Some(press) = press {
+        row = row
+            .role("button")
+            .label(label)
+            .focusable(true)
+            .on_press(press);
+    }
+    row
+}
+
 /// One canvas click: binds the pending library action (current layer), or
 /// selects the button (and unbinds on the second click).
 fn canvas_click(s: &mut State, i: usize, b: u8) {
