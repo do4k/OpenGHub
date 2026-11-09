@@ -15,7 +15,7 @@ pub(crate) fn view(s: &State, cx: &mut Cx<State>) -> El {
     let scale = cx.env().scale;
     #[cfg(unix)]
     if let Some(i) = s.selected {
-        return device_page(s, i, p);
+        return device_page(s, i, p, scale);
     }
     dashboard(s, p, scale)
 }
